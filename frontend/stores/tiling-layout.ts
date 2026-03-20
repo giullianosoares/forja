@@ -775,7 +775,10 @@ export const useTilingLayoutStore = create<TilingLayoutState>((set, get) => ({
     if (!activeTabset) return;
 
     const selectedNode = activeTabset.getSelectedNode();
-    if (!selectedNode) return;
+    if (!selectedNode) {
+      get().closeTabset(activeTabset.getId());
+      return;
+    }
 
     const nodeId = selectedNode.getId();
     model.doAction(Actions.deleteTab(nodeId));
