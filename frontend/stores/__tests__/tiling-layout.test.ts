@@ -1689,6 +1689,45 @@ describe("tiling-layout store", () => {
       expect(after.getNodeById(TABSET_IDS.main)).toBeDefined();
     });
 
+    it("closeActiveTab closes empty tabset via closeTabset", () => {
+      const store = useTilingLayoutStore.getState();
+
+      // Add a tab to main, then split to create a secondary tabset
+      store.addBlock(
+        { type: "terminal", sessionType: "terminal" },
+        TABSET_IDS.main,
+        "tab-in-main",
+      );
+      store.addBlock(
+        { type: "browser", url: "https://example.com" },
+        TABSET_IDS.main,
+        "tab-in-secondary",
+        DockLocation.RIGHT,
+      );
+
+      const { model } = useTilingLayoutStore.getState();
+
+      // Make main the active tabset (while it still has a tab)
+      model.doAction(Actions.setActiveTabset(TABSET_IDS.main));
+
+      // Now delete its tab directly (bypass updateModel to avoid removeEmptyTabsets)
+      // tabset-main persists because enableDeleteWhenEmpty=false
+      model.doAction(Actions.deleteTab("tab-in-main"));
+      useTilingLayoutStore.setState({ model });
+
+      // Verify: main is active, empty, but still exists
+      const activeTabset = model.getActiveTabset();
+      expect(activeTabset?.getId()).toBe(TABSET_IDS.main);
+      expect(activeTabset?.getSelectedNode()).toBeFalsy();
+
+      // closeActiveTab should close the empty tabset
+      useTilingLayoutStore.getState().closeActiveTab();
+
+      const { model: after } = useTilingLayoutStore.getState();
+      expect(after.getNodeById(TABSET_IDS.main)).toBeUndefined();
+      expect(after.getNodeById("tab-in-secondary")).toBeDefined();
+    });
+
     it("removeBlock cleans up empty non-main tabsets", () => {
       // Create a secondary tabset by docking RIGHT
       useTilingLayoutStore.getState().addBlock(
