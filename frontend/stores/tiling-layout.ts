@@ -43,6 +43,8 @@ interface TilingLayoutState {
   updateBlockConfig: (nodeId: string, config: Record<string, unknown>) => void;
   /** Closes all tabs in the given tabset and removes it from the layout. */
   closeTabset: (tabsetId: string) => void;
+  /** Reconciles tabCount with the actual number of tabs in the model. */
+  syncTabCount: () => void;
 }
 
 let tabCounter = 0;
@@ -932,5 +934,13 @@ export const useTilingLayoutStore = create<TilingLayoutState>((set, get) => ({
 
     set({ model });
     return nextTabId;
+  },
+
+  syncTabCount: () => {
+    const { model, tabCount } = get();
+    const actual = countTabs(model);
+    if (actual !== tabCount) {
+      set({ tabCount: actual });
+    }
   },
 }));
