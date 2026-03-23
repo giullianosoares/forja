@@ -2042,6 +2042,36 @@ describe("tiling-layout store", () => {
     });
   });
 
+  describe("syncTabCount", () => {
+    it("corrects stale tabCount when model has fewer tabs than stored count", () => {
+      const store = useTilingLayoutStore.getState();
+      store.addBlock({ type: "terminal", sessionType: "terminal" }, undefined, "t1");
+      store.addBlock({ type: "terminal", sessionType: "terminal" }, undefined, "t2");
+      expect(useTilingLayoutStore.getState().tabCount).toBe(2);
+
+      // Simulate stale state: model has tabs removed but tabCount not updated
+      const { model } = useTilingLayoutStore.getState();
+      model.doAction(Actions.deleteTab("t1"));
+      model.doAction(Actions.deleteTab("t2"));
+      // Manually set stale tabCount without going through updateModel
+      useTilingLayoutStore.setState({ tabCount: 2 });
+
+      // syncTabCount should reconcile
+      useTilingLayoutStore.getState().syncTabCount();
+      expect(useTilingLayoutStore.getState().tabCount).toBe(0);
+    });
+
+    it("is a no-op when tabCount already matches model", () => {
+      const store = useTilingLayoutStore.getState();
+      store.addBlock({ type: "terminal", sessionType: "terminal" }, undefined, "t1");
+      expect(useTilingLayoutStore.getState().tabCount).toBe(1);
+
+      // syncTabCount should not change anything
+      useTilingLayoutStore.getState().syncTabCount();
+      expect(useTilingLayoutStore.getState().tabCount).toBe(1);
+    });
+  });
+
   describe("editingTabId", () => {
     it("initializes as null", () => {
       expect(useTilingLayoutStore.getState().editingTabId).toBeNull();
