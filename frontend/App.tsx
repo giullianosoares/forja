@@ -679,6 +679,9 @@ function App({
           projectPath,
           anyRunning ? "running" : "exited",
         );
+        if (!anyRunning) {
+          useProjectsStore.getState().markProjectNotified(projectPath, "Session finished");
+        }
       } else {
         useProjectsStore.getState().setProjectSessionState(projectPath, state);
       }

@@ -55,6 +55,7 @@ function createMockStore(overrides = {}) {
     getProjectColor: () => "#cba6f7",
     sessionStates: {},
     unreadProjects: new Set<string>(),
+    notificationMessages: {},
     ...overrides,
   } as never;
 }
@@ -371,6 +372,57 @@ describe("ProjectSidebar", () => {
     await user.click(openInEditor);
 
     expect(invoke).toHaveBeenCalledWith("shell:openInEditor", { path: "/a/my-app" });
+  });
+
+  it("badge has animate-pulse class when project is notified", () => {
+    mockUseProjectsStore.mockReturnValue(createMockStore({
+      projects: [{ path: "/a/my-app", name: "my-app", lastOpened: "", iconPath: null }],
+      activeProjectPath: "/b/other",
+      notifiedProjects: new Set(["/a/my-app"]),
+    }));
+
+    render(<ProjectSidebar onOpenProject={vi.fn()} />);
+
+    const badge = screen.getByTestId("session-badge-/a/my-app");
+    expect(badge.className).toContain("animate-pulse");
+  });
+
+  it("tooltip shows notification message when project is notified", async () => {
+    const user = userEvent.setup();
+    mockUseProjectsStore.mockReturnValue(createMockStore({
+      projects: [{ path: "/a/my-app", name: "my-app", lastOpened: "", iconPath: null }],
+      activeProjectPath: "/b/other",
+      notifiedProjects: new Set(["/a/my-app"]),
+      notificationMessages: { "/a/my-app": "Session finished" },
+    }));
+
+    render(<ProjectSidebar onOpenProject={vi.fn()} />);
+
+    const btn = screen.getByLabelText("Switch to project: my-app");
+    await user.hover(btn);
+
+    const matches = await screen.findAllByText("Session finished");
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("tooltip does not show notification message when project is not notified", async () => {
+    const user = userEvent.setup();
+    mockUseProjectsStore.mockReturnValue(createMockStore({
+      projects: [{ path: "/a/my-app", name: "my-app", lastOpened: "", iconPath: null }],
+      activeProjectPath: "/a/my-app",
+      notifiedProjects: new Set<string>(),
+      notificationMessages: {},
+    }));
+
+    render(<ProjectSidebar onOpenProject={vi.fn()} />);
+
+    const btn = screen.getByLabelText("Switch to project: my-app");
+    await user.hover(btn);
+
+    // Tooltip should show project name but NOT notification message
+    const matches = await screen.findAllByText("my-app");
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Session finished")).toBeNull();
   });
 
   it("calls open dialog when Browse is clicked", async () => {

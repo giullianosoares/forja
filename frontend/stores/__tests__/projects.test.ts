@@ -531,6 +531,7 @@ describe("useProjectsStore", () => {
         activeProjectPath: "/a/my-app",
         thinkingProjects: new Set<string>(),
         notifiedProjects: new Set<string>(),
+        notificationMessages: {},
       });
     });
 
@@ -565,6 +566,51 @@ describe("useProjectsStore", () => {
       useProjectsStore.setState({ notifiedProjects: new Set(["/b/other"]) });
       await useProjectsStore.getState().switchToProject("/b/other");
       expect(useProjectsStore.getState().notifiedProjects.has("/b/other")).toBe(false);
+    });
+
+    it("markProjectNotified stores message when provided", () => {
+      useProjectsStore.getState().markProjectNotified("/b/other", "Session finished");
+      const state = useProjectsStore.getState();
+      expect(state.notifiedProjects.has("/b/other")).toBe(true);
+      expect(state.notificationMessages["/b/other"]).toBe("Session finished");
+    });
+
+    it("markProjectNotified without message does not set notificationMessages entry", () => {
+      useProjectsStore.getState().markProjectNotified("/b/other");
+      const state = useProjectsStore.getState();
+      expect(state.notifiedProjects.has("/b/other")).toBe(true);
+      expect(state.notificationMessages["/b/other"]).toBeUndefined();
+    });
+
+    it("markProjectNotified with message is no-op when project is active", () => {
+      useProjectsStore.getState().markProjectNotified("/a/my-app", "Session finished");
+      const state = useProjectsStore.getState();
+      expect(state.notifiedProjects.has("/a/my-app")).toBe(false);
+      expect(state.notificationMessages["/a/my-app"]).toBeUndefined();
+    });
+
+    it("clearProjectNotified also removes notification message", () => {
+      useProjectsStore.setState({
+        notifiedProjects: new Set(["/b/other"]),
+        notificationMessages: { "/b/other": "Session finished" },
+      });
+      useProjectsStore.getState().clearProjectNotified("/b/other");
+      const state = useProjectsStore.getState();
+      expect(state.notifiedProjects.has("/b/other")).toBe(false);
+      expect(state.notificationMessages["/b/other"]).toBeUndefined();
+    });
+
+    it("setProjectNotificationMessage stores message", () => {
+      useProjectsStore.getState().setProjectNotificationMessage("/b/other", "Custom message");
+      expect(useProjectsStore.getState().notificationMessages["/b/other"]).toBe("Custom message");
+    });
+
+    it("clearProjectNotificationMessage removes message", () => {
+      useProjectsStore.setState({
+        notificationMessages: { "/b/other": "Session finished" },
+      });
+      useProjectsStore.getState().clearProjectNotificationMessage("/b/other");
+      expect(useProjectsStore.getState().notificationMessages["/b/other"]).toBeUndefined();
     });
   });
 

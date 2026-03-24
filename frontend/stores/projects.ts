@@ -46,6 +46,7 @@ interface ProjectsState {
   unreadProjects: Set<string>;
   thinkingProjects: Set<string>;
   notifiedProjects: Set<string>;
+  notificationMessages: Record<string, string>;
 
   loadProjects: () => Promise<void>;
   addProject: (projectPath: string) => Promise<void>;
@@ -60,8 +61,10 @@ interface ProjectsState {
   setProjectSessionState: (projectPath: string, state: SessionState) => void;
   markProjectAsRead: (projectPath: string) => void;
   setProjectThinking: (projectPath: string, isThinking: boolean) => void;
-  markProjectNotified: (projectPath: string) => void;
+  markProjectNotified: (projectPath: string, message?: string) => void;
   clearProjectNotified: (projectPath: string) => void;
+  setProjectNotificationMessage: (projectPath: string, message: string) => void;
+  clearProjectNotificationMessage: (projectPath: string) => void;
 }
 
 export const useProjectsStore = create<ProjectsState>((set, get) => ({
@@ -73,6 +76,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
   unreadProjects: new Set<string>(),
   thinkingProjects: new Set<string>(),
   notifiedProjects: new Set<string>(),
+  notificationMessages: {},
 
   loadProjects: async () => {
     set({ loading: true });
@@ -442,12 +446,15 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
     });
   },
 
-  markProjectNotified: (projectPath) => {
+  markProjectNotified: (projectPath, message) => {
     set((s) => {
       if (s.activeProjectPath === projectPath) return {};
       const next = new Set(s.notifiedProjects);
       next.add(projectPath);
-      return { notifiedProjects: next };
+      const msgs = message
+        ? { ...s.notificationMessages, [projectPath]: message }
+        : s.notificationMessages;
+      return { notifiedProjects: next, notificationMessages: msgs };
     });
   },
 
@@ -455,7 +462,23 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
     set((s) => {
       const next = new Set(s.notifiedProjects);
       next.delete(projectPath);
-      return { notifiedProjects: next };
+      const msgs = { ...s.notificationMessages };
+      delete msgs[projectPath];
+      return { notifiedProjects: next, notificationMessages: msgs };
+    });
+  },
+
+  setProjectNotificationMessage: (projectPath, message) => {
+    set((s) => ({
+      notificationMessages: { ...s.notificationMessages, [projectPath]: message },
+    }));
+  },
+
+  clearProjectNotificationMessage: (projectPath) => {
+    set((s) => {
+      const next = { ...s.notificationMessages };
+      delete next[projectPath];
+      return { notificationMessages: next };
     });
   },
 }));
