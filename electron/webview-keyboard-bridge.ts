@@ -59,8 +59,11 @@ export function attachWebviewKeyboardBridge(
   webviewContents.on("before-input-event", (event: ElectronEvent, input: Input) => {
     if (input.type !== "keyDown") return;
 
-    // F5 reloads the webview (browser pane reload)
-    if (input.key === "F5") {
+    // F5 / Ctrl+R / Cmd+R reloads the webview (browser pane reload)
+    const isReloadKey =
+      input.key === "F5" ||
+      (input.key.toLowerCase() === "r" && (input.control || input.meta) && !input.alt);
+    if (isReloadKey) {
       event.preventDefault();
       webviewContents.reload();
       return;
