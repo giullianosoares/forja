@@ -28,7 +28,7 @@ interface TerminalTabsState {
   isFullscreenByProject: Record<string, boolean>;
 
   nextTabId: () => string;
-  addTab: (id: string, path: string, sessionType?: SessionType) => void;
+  addTab: (id: string, path: string, sessionType?: SessionType, customName?: string) => void;
   /** Registers tab metadata WITHOUT creating a layout block. Used for non-active project tabs during session restore. */
   registerTab: (id: string, path: string, sessionType?: SessionType, customName?: string) => void;
   removeTab: (id: string) => void;
@@ -48,7 +48,7 @@ interface TerminalTabsState {
   hasTab: (tabId: string) => boolean;
   /** Serializes tabs for a specific project path into a disk-persistable format. */
   serializeTabsForSave: (projectPath: string) => {
-    tabs: Array<{ id: string; sessionType: string; cliSessionId?: string; exited?: boolean }>;
+    tabs: Array<{ id: string; sessionType: string; cliSessionId?: string; exited?: boolean; customName?: string }>;
     activeTabIndex: number;
   };
   /** Stores the detected CLI session ID on the specified tab for future resume capability. */
@@ -78,13 +78,14 @@ export const useTerminalTabsStore = create<TerminalTabsState>((set, get) => ({
     return `${windowLabel}-${RENDERER_INSTANCE_ID}-tab-${newCounter}`;
   },
 
-  addTab: (id: string, path: string, sessionType: SessionType = 'claude') => {
+  addTab: (id: string, path: string, sessionType: SessionType = 'claude', customName?: string) => {
     const tab: TerminalTab = {
       id,
       name: getSessionDisplayName(sessionType),
       path,
       isRunning: true,
       sessionType,
+      ...(customName ? { customName } : {}),
     };
     set((state) => ({
       tabs: [...state.tabs, tab],
@@ -214,6 +215,7 @@ export const useTerminalTabsStore = create<TerminalTabsState>((set, get) => ({
         sessionType: tab.sessionType,
         ...(tab.cliSessionId ? { cliSessionId: tab.cliSessionId } : {}),
         ...(!tab.isRunning ? { exited: true } : {}),
+        ...(tab.customName ? { customName: tab.customName } : {}),
       })),
       activeTabIndex: activeIdx >= 0 ? activeIdx : 0,
     };

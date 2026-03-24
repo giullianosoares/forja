@@ -285,7 +285,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
         browserOpen?: boolean;
         browserUrl?: string;
         layoutJson?: Record<string, unknown>;
-        tabs?: Array<{ id?: string; sessionType: string; cliSessionId?: string; exited?: boolean }>;
+        tabs?: Array<{ id?: string; sessionType: string; cliSessionId?: string; exited?: boolean; customName?: string }>;
         activeTabIndex?: number;
       } | null>("get_project_ui_state", {
         workspaceId: useWorkspaceStore.getState().activeWorkspaceId ?? "",
@@ -343,7 +343,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
             const currentTabsStore = useTerminalTabsStore.getState();
             for (const tab of savedState.tabs) {
               const id = tab.id || currentTabsStore.nextTabId();
-              currentTabsStore.registerTab(id, projectPath, (tab.sessionType || "claude") as import("@/lib/cli-registry").SessionType);
+              currentTabsStore.registerTab(id, projectPath, (tab.sessionType || "claude") as import("@/lib/cli-registry").SessionType, tab.customName);
               if (tab.cliSessionId) currentTabsStore.setCliSessionId(id, tab.cliSessionId);
               if (tab.exited) currentTabsStore.markTabExited(id);
             }

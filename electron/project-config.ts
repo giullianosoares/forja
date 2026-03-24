@@ -18,7 +18,7 @@ export interface ForjaProjectConfig {
     previewFile?: string | null;
     previewSize?: number;
     layoutJson?: Record<string, unknown>;
-    tabs?: Array<{ id?: string; sessionType: string; cliSessionId?: string }>;
+    tabs?: Array<{ id?: string; sessionType: string; cliSessionId?: string; customName?: string }>;
     activeTabIndex?: number;
   };
 }

@@ -246,7 +246,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const projectPath = workspace.lastActiveProjectPath || workspace.projects[0]?.path;
     if (projectPath) {
       const uiState = await invoke<{
-        tabs?: Array<{ id?: string; path?: string; sessionType: string; cliSessionId?: string; exited?: boolean }>;
+        tabs?: Array<{ id?: string; path?: string; sessionType: string; cliSessionId?: string; exited?: boolean; customName?: string }>;
         activeTabIndex?: number;
       } | null>("get_project_ui_state", { workspaceId, path: projectPath });
 
@@ -257,7 +257,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         for (const tab of uiState.tabs) {
           const tabPath = tab.path || projectPath;
           const id = tab.id || tabsStore.nextTabId();
-          tabsStore.addTab(id, tabPath, (tab.sessionType || "claude") as SessionType);
+          tabsStore.addTab(id, tabPath, (tab.sessionType || "claude") as SessionType, tab.customName);
           if (tab.cliSessionId) {
             tabsStore.setCliSessionId(id, tab.cliSessionId);
           }

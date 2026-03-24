@@ -274,7 +274,7 @@ function App({
       }
 
       const uiState = await invoke<{
-        tabs?: Array<{ id?: string; path?: string; sessionType: string; cliSessionId?: string }>;
+        tabs?: Array<{ id?: string; path?: string; sessionType: string; cliSessionId?: string; customName?: string }>;
         activeTabIndex?: number;
         previewFile?: string | null;
         layoutJson?: Record<string, unknown>;
@@ -327,14 +327,14 @@ function App({
           const id = tab.id && layoutStore.hasBlock(tab.id)
             ? tab.id
             : tabsStore.nextTabId();
-          tabsStore.addTab(id, tabPath, tab.sessionType as import("@/lib/cli-registry").SessionType);
+          tabsStore.addTab(id, tabPath, tab.sessionType as import("@/lib/cli-registry").SessionType, tab.customName);
           if (tab.cliSessionId) {
             tabsStore.setCliSessionId(id, tab.cliSessionId);
           }
           activeProjectTabIds.push(id);
         } else {
           const id = tab.id || tabsStore.nextTabId();
-          tabsStore.registerTab(id, tabPath, tab.sessionType as import("@/lib/cli-registry").SessionType);
+          tabsStore.registerTab(id, tabPath, tab.sessionType as import("@/lib/cli-registry").SessionType, tab.customName);
           if (tab.cliSessionId) {
             tabsStore.setCliSessionId(id, tab.cliSessionId);
           }

@@ -155,6 +155,24 @@ describe("useTerminalTabsStore", () => {
     expect(state.tabs[0].sessionType).toBe("claude");
   });
 
+  it("addTab accepts optional customName and stores it on the tab", () => {
+    const store = useTerminalTabsStore.getState();
+    const tabId = store.nextTabId();
+    useTerminalTabsStore.getState().addTab(tabId, "/test/path", "claude", "My Custom Tab");
+
+    const state = useTerminalTabsStore.getState();
+    expect(state.tabs[0].customName).toBe("My Custom Tab");
+  });
+
+  it("addTab without customName does not set customName field", () => {
+    const store = useTerminalTabsStore.getState();
+    const tabId = store.nextTabId();
+    useTerminalTabsStore.getState().addTab(tabId, "/test/path", "claude");
+
+    const state = useTerminalTabsStore.getState();
+    expect(state.tabs[0].customName).toBeUndefined();
+  });
+
   it("creates tabs with mixed session types storing base names", () => {
     createTab("/path/a", "claude");
     createTab("/path/b", "gemini");
@@ -647,6 +665,27 @@ describe("useTerminalTabsStore", () => {
       const result = useTerminalTabsStore.getState().serializeTabsForSave("/project-a");
 
       expect(result.tabs[0]).not.toHaveProperty("exited");
+    });
+
+    it("includes customName when tab has been renamed", () => {
+      const id1 = createTab("/project-a", "claude");
+      useTerminalTabsStore.getState().renameTab(id1, "My Build");
+
+      const result = useTerminalTabsStore.getState().serializeTabsForSave("/project-a");
+
+      expect(result.tabs[0]).toEqual({
+        id: id1,
+        sessionType: "claude",
+        customName: "My Build",
+      });
+    });
+
+    it("omits customName when tab has not been renamed", () => {
+      createTab("/project-a", "claude");
+
+      const result = useTerminalTabsStore.getState().serializeTabsForSave("/project-a");
+
+      expect(result.tabs[0]).not.toHaveProperty("customName");
     });
 
     it("computes activeTabIndex based on active tab within project", () => {
