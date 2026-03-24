@@ -23,6 +23,7 @@ let mockMarkProjectNotified: ReturnType<typeof vi.fn>;
 describe("useSessionStateStore", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    useSessionStateStore.getState()._resetInternals();
     useSessionStateStore.setState({ states: {} });
     mockSetProjectThinking = vi.fn();
     mockMarkProjectNotified = vi.fn();
@@ -149,9 +150,18 @@ describe("useSessionStateStore", () => {
       expect(mockSetProjectThinking).not.toHaveBeenCalled();
     });
 
-    it("on thinking→ready does not mark project as notified", () => {
+    it("on thinking→ready marks project as notified with message", () => {
       const { onData } = useSessionStateStore.getState();
       onData("tab-1", { projectPath: "/home/user/my-app", sessionType: "claude" });
+
+      vi.advanceTimersByTime(2500);
+
+      expect(mockMarkProjectNotified).toHaveBeenCalledWith("/home/user/my-app", "Session finished");
+    });
+
+    it("on thinking→ready does NOT mark terminal sessions as notified", () => {
+      const { onData } = useSessionStateStore.getState();
+      onData("tab-1", { projectPath: "/home/user/my-app", sessionType: "terminal" });
 
       vi.advanceTimersByTime(2500);
 
@@ -228,6 +238,7 @@ describe("useSessionStateStore", () => {
         projectPath: "/home/user/my-app",
         sessionType: "claude",
         activeProjectPath: null,
+        tabId: "tab-1",
       });
     });
 
@@ -239,12 +250,29 @@ describe("useSessionStateStore", () => {
       expect(mockMarkProjectNotified).toHaveBeenCalledWith("/home/user/my-app");
     });
 
-    it("does not call notify on thinking → ready transition", async () => {
+    it("calls pty:notify-session-finished on thinking → ready transition", async () => {
       const { invoke } = await import("@/lib/ipc");
       vi.mocked(invoke).mockClear();
 
       const { onData } = useSessionStateStore.getState();
       onData("tab-1", { projectPath: "/home/user/my-app", sessionType: "claude" });
+
+      vi.advanceTimersByTime(2500);
+
+      expect(invoke).toHaveBeenCalledWith("pty:notify-session-finished", {
+        projectPath: "/home/user/my-app",
+        sessionType: "claude",
+        activeProjectPath: null,
+        tabId: "tab-1",
+      });
+    });
+
+    it("does not call pty:notify-session-finished for terminal thinking → ready", async () => {
+      const { invoke } = await import("@/lib/ipc");
+      vi.mocked(invoke).mockClear();
+
+      const { onData } = useSessionStateStore.getState();
+      onData("tab-1", { projectPath: "/home/user/my-app", sessionType: "terminal" });
 
       vi.advanceTimersByTime(2500);
 
@@ -290,6 +318,83 @@ describe("useSessionStateStore", () => {
       onExit("tab-1");
 
       expect(invoke).not.toHaveBeenCalledWith(
+        "pty:notify-session-finished",
+        expect.anything(),
+      );
+    });
+
+    it("does not re-notify on subsequent thinking→ready cycles for the same tab", async () => {
+      const { invoke } = await import("@/lib/ipc");
+      vi.mocked(invoke).mockClear();
+
+      const { onData } = useSessionStateStore.getState();
+      const meta = { projectPath: "/home/user/my-app", sessionType: "claude" };
+
+      // First cycle: thinking → ready (should notify)
+      onData("tab-1", meta);
+      vi.advanceTimersByTime(2500);
+
+      expect(invoke).toHaveBeenCalledTimes(1);
+
+      vi.mocked(invoke).mockClear();
+      mockMarkProjectNotified.mockClear();
+
+      // Second cycle: new data → thinking → ready (should NOT notify again)
+      onData("tab-1", meta);
+      vi.advanceTimersByTime(2500);
+
+      expect(invoke).not.toHaveBeenCalledWith(
+        "pty:notify-session-finished",
+        expect.anything(),
+      );
+      expect(mockMarkProjectNotified).not.toHaveBeenCalled();
+    });
+
+    it("re-notifies after markTabSeen is called", async () => {
+      const { invoke } = await import("@/lib/ipc");
+      vi.mocked(invoke).mockClear();
+
+      const { onData, markTabSeen } = useSessionStateStore.getState();
+      const meta = { projectPath: "/home/user/my-app", sessionType: "claude" };
+
+      // First cycle: notify
+      onData("tab-1", meta);
+      vi.advanceTimersByTime(2500);
+      expect(invoke).toHaveBeenCalledTimes(1);
+
+      // User views the tab
+      markTabSeen("tab-1");
+
+      vi.mocked(invoke).mockClear();
+
+      // Third cycle: should notify again since user saw the tab
+      onData("tab-1", meta);
+      vi.advanceTimersByTime(2500);
+      expect(invoke).toHaveBeenCalledWith(
+        "pty:notify-session-finished",
+        expect.anything(),
+      );
+    });
+
+    it("cleanup clears notified state for the tab", async () => {
+      const { invoke } = await import("@/lib/ipc");
+      vi.mocked(invoke).mockClear();
+
+      const { onData, cleanup } = useSessionStateStore.getState();
+      const meta = { projectPath: "/home/user/my-app", sessionType: "claude" };
+
+      onData("tab-1", meta);
+      vi.advanceTimersByTime(2500);
+
+      vi.mocked(invoke).mockClear();
+
+      cleanup("tab-1");
+
+      // Re-create the tab — should be able to notify again
+      onData("tab-1", meta);
+      vi.advanceTimersByTime(2500);
+
+      expect(invoke).toHaveBeenCalledWith(
         "pty:notify-session-finished",
         expect.anything(),
       );

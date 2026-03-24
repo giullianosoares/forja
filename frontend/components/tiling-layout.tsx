@@ -27,6 +27,7 @@ import { useTerminalTabsStore } from "@/stores/terminal-tabs";
 import { useFilePreviewStore } from "@/stores/file-preview";
 import { useAgentChatStore } from "@/stores/agent-chat";
 import { useFileTreeStore } from "@/stores/file-tree";
+import { useProjectsStore } from "@/stores/projects";
 import { useSessionStateStore } from "@/stores/session-state";
 import { blockFactory } from "@/components/block-factory";
 import { ForjaEmptyState } from "@/components/forja-empty-state";
@@ -110,7 +111,23 @@ export function TilingLayout() {
   // Subscribe to session state changes to trigger re-renders for tab dots
   const sessionStates = useSessionStateStore((s) => s.states);
 
+  // Subscribe to notification state for tabset notification dots
+  const notifiedProjects = useProjectsStore((s) => s.notifiedProjects);
+  const allTerminalTabs = useTerminalTabsStore((s) => s.tabs);
+
   const handleAction = useCallback((action: Action) => {
+    // Clear notification when user selects a tab belonging to a notified project
+    if (action.type === Actions.SELECT_TAB) {
+      const nodeId = action.data?.node as string | undefined;
+      if (nodeId) {
+        useSessionStateStore.getState().markTabSeen(nodeId);
+        const tab = useTerminalTabsStore.getState().tabs.find((t) => t.id === nodeId);
+        if (tab && useProjectsStore.getState().notifiedProjects.has(tab.path)) {
+          useProjectsStore.getState().clearProjectNotified(tab.path);
+        }
+      }
+    }
+
     // Sync store state when flexlayout closes a tab via its own UI
     if (action.type === Actions.DELETE_TAB) {
       const nodeId = action.data?.node as string | undefined;
@@ -198,6 +215,26 @@ export function TilingLayout() {
         return;
       }
 
+      // Notification dot: check if any terminal tab in this tabset belongs to a notified project
+      const hasNotifiedTab = children.some((child) => {
+        const tabId = (child as TabNode).getId();
+        const tab = allTerminalTabs.find((t) => t.id === tabId);
+        return tab && notifiedProjects.has(tab.path);
+      });
+
+      if (hasNotifiedTab) {
+        renderValues.buttons.unshift(
+          <span
+            key="notif-dot"
+            className="relative mr-1 flex h-2 w-2 shrink-0"
+            aria-label="Unread notification"
+          >
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ctp-green opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-ctp-green" />
+          </span>,
+        );
+      }
+
       const hasFileTree = children.some(
         (child) => (child as TabNode).getComponent?.() === "file-tree",
       );
@@ -240,7 +277,7 @@ export function TilingLayout() {
       }
 
     },
-    [],
+    [notifiedProjects, allTerminalTabs],
   );
 
   const onRenderTab = useCallback(

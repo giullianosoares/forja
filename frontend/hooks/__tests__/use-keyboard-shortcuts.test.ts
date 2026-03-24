@@ -94,6 +94,8 @@ vi.mock("@/stores/git-diff", () => ({
 
 const projectStoreActions = {
   projects: [] as { path: string }[],
+  activeProjectPath: null as string | null,
+  notifiedProjects: new Set<string>(),
   switchToProject: vi.fn(),
 };
 
@@ -739,5 +741,97 @@ describe("useKeyboardShortcuts global tab cycling (Ctrl+Tab)", () => {
     );
 
     expect(mockPaneFocusRegistryFocus).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardShortcuts Alt+N jump-to-unread", () => {
+  beforeEach(() => {
+    projectStoreActions.switchToProject.mockReset();
+    projectStoreActions.projects = [];
+    projectStoreActions.activeProjectPath = null;
+    projectStoreActions.notifiedProjects = new Set();
+  });
+
+  it("Alt+N switches to first unread project", () => {
+    projectStoreActions.projects = [
+      { path: "/project-a" },
+      { path: "/project-b" },
+      { path: "/project-c" },
+    ];
+    projectStoreActions.activeProjectPath = "/project-a";
+    projectStoreActions.notifiedProjects = new Set(["/project-b"]);
+
+    setupHook();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "n",
+        altKey: true,
+      }),
+    );
+
+    expect(projectStoreActions.switchToProject).toHaveBeenCalledWith("/project-b");
+  });
+
+  it("Alt+N cycles to next unread after current", () => {
+    projectStoreActions.projects = [
+      { path: "/project-a" },
+      { path: "/project-b" },
+      { path: "/project-c" },
+    ];
+    projectStoreActions.activeProjectPath = "/project-b";
+    projectStoreActions.notifiedProjects = new Set(["/project-a", "/project-c"]);
+
+    setupHook();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "n",
+        altKey: true,
+      }),
+    );
+
+    expect(projectStoreActions.switchToProject).toHaveBeenCalledWith("/project-c");
+  });
+
+  it("Alt+N wraps around to first unread when past last", () => {
+    projectStoreActions.projects = [
+      { path: "/project-a" },
+      { path: "/project-b" },
+      { path: "/project-c" },
+    ];
+    projectStoreActions.activeProjectPath = "/project-c";
+    projectStoreActions.notifiedProjects = new Set(["/project-a"]);
+
+    setupHook();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "n",
+        altKey: true,
+      }),
+    );
+
+    expect(projectStoreActions.switchToProject).toHaveBeenCalledWith("/project-a");
+  });
+
+  it("Alt+N is no-op when no notified projects", () => {
+    projectStoreActions.projects = [
+      { path: "/project-a" },
+      { path: "/project-b" },
+    ];
+    projectStoreActions.activeProjectPath = "/project-a";
+    projectStoreActions.notifiedProjects = new Set();
+
+    setupHook();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "n",
+        altKey: true,
+      }),
+    );
+
+    expect(projectStoreActions.switchToProject).not.toHaveBeenCalled();
   });
 });
