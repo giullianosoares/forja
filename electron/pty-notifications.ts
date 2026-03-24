@@ -6,11 +6,43 @@ interface SessionReadyInfo {
   projectPath: string;
   sessionType: string;
   activeProjectPath: string | null;
+  summary?: string;
 }
 
 interface NotificationData {
   title: string;
   body: string;
+}
+
+/**
+ * Strips ANSI escape codes, OSC sequences, collapses whitespace,
+ * and extracts the last meaningful lines from raw PTY output.
+ */
+export function extractNotificationSummary(raw: string, maxLength = 200): string {
+  if (!raw) return "";
+
+  // Strip OSC sequences (hyperlinks, window titles, etc.)
+  let cleaned = raw.replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, "");
+  // Strip CSI sequences (colors, cursor movement, etc.)
+  cleaned = cleaned.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+  // Strip any remaining escape sequences
+  cleaned = cleaned.replace(/\x1b[^[\]].?/g, "");
+  // Collapse multiple spaces
+  cleaned = cleaned.replace(/ {2,}/g, " ");
+
+  // Split into lines, filter empty/whitespace-only
+  const lines = cleaned.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return "";
+
+  // Take last few meaningful lines, join with space
+  const tail = lines.slice(-5);
+  let result = tail.join(" ");
+
+  if (result.length > maxLength) {
+    result = result.slice(0, maxLength - 3) + "...";
+  }
+
+  return result;
 }
 
 /**
@@ -20,9 +52,13 @@ export function buildSessionFinishedNotification(info: SessionReadyInfo): Notifi
   const projectName = path.basename(info.projectPath);
   const sessionName = info.sessionType.charAt(0).toUpperCase() + info.sessionType.slice(1);
 
+  const body = info.summary?.trim()
+    ? info.summary
+    : `${sessionName} finished with new output.`;
+
   return {
     title: `Forja — ${projectName}`,
-    body: `${sessionName} finished with new output.`,
+    body,
   };
 }
 

@@ -633,11 +633,18 @@ ipcMain.handle(
   "pty:notify-session-finished",
   async (
     _event,
-    args: { projectPath: string; sessionType: string; activeProjectPath: string | null },
+    args: { projectPath: string; sessionType: string; activeProjectPath: string | null; tabId?: string },
   ) => {
-    const { showSessionFinishedNotification } = await import("./pty-notifications.js");
+    const { showSessionFinishedNotification, extractNotificationSummary } = await import("./pty-notifications.js");
+    let summary: string | undefined;
+    if (args.tabId) {
+      const buffer = getSessionBuffer(args.tabId);
+      if (buffer) {
+        summary = extractNotificationSummary(buffer);
+      }
+    }
     const mainWindow = BrowserWindow.getAllWindows()[0] ?? null;
-    showSessionFinishedNotification(args, mainWindow);
+    showSessionFinishedNotification({ ...args, summary }, mainWindow);
   },
 );
 
