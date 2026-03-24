@@ -12,7 +12,7 @@
  * These are common text-editing shortcuts that users expect to work
  * inside web content (plugin pages, browser tabs).
  */
-const WEBVIEW_ONLY_KEYS = new Set(["c", "v", "x", "a", "z", "y", "f"]);
+const WEBVIEW_ONLY_KEYS = new Set(["c", "v", "x", "a", "z", "y", "f", "r"]);
 
 interface KeyInput {
   key: string;

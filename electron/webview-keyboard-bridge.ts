@@ -16,7 +16,7 @@ import type { WebContents, Input, Event as ElectronEvent } from "electron";
  * Keys that should stay in the webview when pressed with Ctrl/Cmd.
  * Common text-editing shortcuts users expect inside web content.
  */
-const WEBVIEW_ONLY_KEYS = new Set(["c", "v", "x", "a", "z", "y", "f"]);
+const WEBVIEW_ONLY_KEYS = new Set(["c", "v", "x", "a", "z", "y", "f", "r"]);
 
 export interface ShortcutPayload {
   key: string;
@@ -58,6 +58,14 @@ export function attachWebviewKeyboardBridge(
 ): void {
   webviewContents.on("before-input-event", (event: ElectronEvent, input: Input) => {
     if (input.type !== "keyDown") return;
+
+    // F5 reloads the webview (browser pane reload)
+    if (input.key === "F5") {
+      event.preventDefault();
+      webviewContents.reload();
+      return;
+    }
+
     if (!shouldForwardToApp(input)) return;
 
     event.preventDefault();
