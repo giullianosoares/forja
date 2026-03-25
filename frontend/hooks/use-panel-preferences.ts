@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@/lib/ipc";
 import { useTilingLayoutStore } from "@/stores/tiling-layout";
-import { parseLayoutJson } from "@/lib/layout-migration";
 
 export interface PanelSizes {
   sidebarSize: number;
@@ -81,15 +80,10 @@ export function usePanelPreferences(projectPath?: string | null) {
               : DEFAULT_TERMINAL_SPLIT.ratio,
         });
 
-        // Restore persisted tiling layout ONLY for the initial global load
-        // (no projectPath). Project-specific layouts are restored by
-        // switchProject() which properly strips orphan terminal blocks.
-        // Loading here on project switch would overwrite the clean model
-        // with a stale disk layout, causing a visible flash of old panes.
-        if (prefs?.layoutJson && !projectPath) {
-          const layoutJson = parseLayoutJson(prefs.layoutJson);
-          useTilingLayoutStore.getState().loadFromJson(layoutJson);
-        }
+        // Layout is now restored exclusively by loadProjectFromDisk()
+        // (single source of truth). Loading workspace-level layoutJson here
+        // caused a visible flash of stale tabs/panes before session restore
+        // could apply the correct state.
       })
       .catch(() => {
         if (active) {
@@ -136,10 +130,12 @@ export function usePanelPreferences(projectPath?: string | null) {
   }, [projectPath]);
 
   const saveLayout = useCallback(() => {
+    // Only save layout when a project is active — layout is now per-project
+    // via saveCurrentProjectToDisk. Skip workspace-level saves to avoid
+    // stale layout flash on startup.
+    if (!projectPath) return;
     const layoutJson = useTilingLayoutStore.getState().getModelJson();
-    const args: Record<string, unknown> = { layoutJson };
-    if (projectPath) args.projectPath = projectPath;
-    invoke("save_ui_preferences", args).catch((err) =>
+    invoke("save_ui_preferences", { layoutJson, projectPath }).catch((err) =>
       console.warn("[panel-preferences] Save layout failed:", err),
     );
   }, [projectPath]);

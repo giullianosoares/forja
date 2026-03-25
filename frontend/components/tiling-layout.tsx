@@ -184,14 +184,16 @@ export function TilingLayout() {
     (newModel: Model, _action: Action) => {
       updateModel(newModel);
 
-      // Debounced persist to disk
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => {
-        const json = newModel.toJson();
-        const args: Record<string, unknown> = { layoutJson: json };
-        if (currentProjectPath) args.projectPath = currentProjectPath;
-        invoke("save_ui_preferences", args).catch(() => {});
-      }, LAYOUT_SAVE_DEBOUNCE_MS);
+      // Debounced persist to disk — only when a project is active.
+      // Layout is now managed per-project via saveCurrentProjectToDisk;
+      // skip workspace-level saves to avoid stale layout flash on startup.
+      if (currentProjectPath) {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => {
+          const json = newModel.toJson();
+          invoke("save_ui_preferences", { layoutJson: json, projectPath: currentProjectPath }).catch(() => {});
+        }, LAYOUT_SAVE_DEBOUNCE_MS);
+      }
     },
     [updateModel, currentProjectPath],
   );

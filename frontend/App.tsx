@@ -771,9 +771,9 @@ function App({
               sessionRestoreDone ? <TilingLayout /> : null
             ) : tilingTabCount > 0 ? (
               <TilingLayout />
-            ) : (
+            ) : sessionRestoreDone ? (
               <EmptyState />
-            )}
+            ) : null}
             </div>
             <div className={cn("transition-all duration-200", isFocusMode && "w-0 overflow-hidden opacity-0")}>
               <RightSidebar hasProject={hasProject} />

@@ -175,15 +175,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const workspace = workspaces.find((w) => w.id === workspaceId);
     if (!workspace) return;
 
-    // Save outgoing workspace's tiling layout before switching
+    // Save outgoing workspace's tiling layout before switching.
+    // Only save when a project path is known — otherwise layoutJson would be
+    // persisted at workspace-level and cause a stale tab flash on next startup.
     const outgoingWsId = get().activeWorkspaceId;
     if (outgoingWsId) {
       const outgoingWs = get().workspaces.find((w) => w.id === outgoingWsId);
       const outgoingProjectPath = outgoingWs?.lastActiveProjectPath || outgoingWs?.projects[0]?.path;
-      const layoutJson = useTilingLayoutStore.getState().getModelJson();
-      const saveArgs: Record<string, unknown> = { workspaceId: outgoingWsId, layoutJson };
-      if (outgoingProjectPath) saveArgs.projectPath = outgoingProjectPath;
-      invoke("save_ui_preferences", saveArgs).catch(() => {});
+      if (outgoingProjectPath) {
+        const layoutJson = useTilingLayoutStore.getState().getModelJson();
+        invoke("save_ui_preferences", { workspaceId: outgoingWsId, layoutJson, projectPath: outgoingProjectPath }).catch(() => {});
+      }
     }
 
     await get().setActiveWorkspace(workspaceId);
