@@ -88,6 +88,7 @@ interface FileTreeState {
   selectedPaths: Record<string, boolean>;
   renamingPath: string | null;
   clipboard: { paths: string[]; operation: "copy" | "cut" } | null;
+  pendingDeletePaths: string[] | null;
 
   toggleSidebar: () => void;
   setFocusedPath: (path: string | null) => void;
@@ -113,6 +114,9 @@ interface FileTreeState {
   copyToClipboard: () => void;
   cutToClipboard: () => void;
   pasteFromClipboard: (targetDir: string) => Promise<void>;
+  confirmDelete: (paths: string[]) => void;
+  cancelDelete: () => void;
+  executePendingDelete: () => Promise<void>;
 }
 
 export const useFileTreeStore = create<FileTreeState>((set, get) => {
@@ -151,6 +155,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => {
     selectedPaths: {},
     renamingPath: null,
     clipboard: null,
+    pendingDeletePaths: null,
 
     toggleSidebar: () => set((state) => ({ isOpen: !state.isOpen })),
     setFocusedPath: (path) => set({ focusedPath: path }),
@@ -450,6 +455,22 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => {
       if (clipboard.operation === "cut") {
         set({ clipboard: null, selectedPaths: {} });
       }
+      get().refreshTree();
+    },
+
+    confirmDelete: (paths: string[]) => set({ pendingDeletePaths: paths }),
+
+    cancelDelete: () => set({ pendingDeletePaths: null }),
+
+    executePendingDelete: async () => {
+      const { pendingDeletePaths, currentPath } = get();
+      if (!pendingDeletePaths || !currentPath) return;
+
+      for (const targetPath of pendingDeletePaths) {
+        await invoke("delete_file_or_dir", { projectPath: currentPath, targetPath });
+      }
+
+      set({ pendingDeletePaths: null, selectedPaths: {} });
       get().refreshTree();
     },
   };

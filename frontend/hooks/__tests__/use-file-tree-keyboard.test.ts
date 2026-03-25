@@ -76,6 +76,7 @@ describe("useFileTreeKeyboard", () => {
       focusedPath: null,
       selectedPaths: {},
       renamingPath: null,
+      pendingDeletePaths: null,
     });
     vi.clearAllMocks();
   });
@@ -289,6 +290,69 @@ describe("useFileTreeKeyboard", () => {
       const handler = handleFileTreeKeyDown;
       fireKey(handler, "F2");
       expect(useFileTreeStore.getState().renamingPath).toBeNull();
+    });
+  });
+
+  describe("Delete / Backspace — trigger confirmDelete", () => {
+    it("should set pendingDeletePaths to focused path when no selection", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "Delete");
+      expect(useFileTreeStore.getState().pendingDeletePaths).toEqual(["/project/README.md"]);
+    });
+
+    it("should set pendingDeletePaths from selectedPaths when items are selected", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      useFileTreeStore.setState({
+        selectedPaths: {
+          "/project/src": true,
+          "/project/README.md": true,
+        },
+      });
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "Delete");
+      const { pendingDeletePaths } = useFileTreeStore.getState();
+      expect(pendingDeletePaths).toHaveLength(2);
+      expect(pendingDeletePaths).toContain("/project/src");
+      expect(pendingDeletePaths).toContain("/project/README.md");
+    });
+
+    it("should prefer selectedPaths over focusedPath", () => {
+      setupStore({ focusedPath: "/project/docs" });
+      useFileTreeStore.setState({
+        selectedPaths: { "/project/src": true },
+      });
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "Delete");
+      expect(useFileTreeStore.getState().pendingDeletePaths).toEqual(["/project/src"]);
+    });
+
+    it("Backspace key should also set pendingDeletePaths", () => {
+      setupStore({ focusedPath: "/project/src" });
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "Backspace");
+      expect(useFileTreeStore.getState().pendingDeletePaths).toEqual(["/project/src"]);
+    });
+
+    it("should call preventDefault when Delete is pressed", () => {
+      setupStore({ focusedPath: "/project/src" });
+      const handler = handleFileTreeKeyDown;
+      const { prevented } = fireKey(handler, "Delete");
+      expect(prevented).toBe(true);
+    });
+
+    it("should call preventDefault when Backspace is pressed", () => {
+      setupStore({ focusedPath: "/project/src" });
+      const handler = handleFileTreeKeyDown;
+      const { prevented } = fireKey(handler, "Backspace");
+      expect(prevented).toBe(true);
+    });
+
+    it("should not set pendingDeletePaths when no focused path and no selection", () => {
+      setupStore();
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "Delete");
+      expect(useFileTreeStore.getState().pendingDeletePaths).toBeNull();
     });
   });
 

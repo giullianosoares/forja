@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState, useEffect } from "react";
+import { memo, useCallback, useRef, useState, useEffect, useMemo } from "react";
 import { ChevronRight, Pencil, Trash2, FolderMinus, FilePlus, FolderPlus, Scissors, Copy, Clipboard, Link, FolderOpen } from "lucide-react";
 import { FileIcon } from "./file-icon";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,88 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Button } from "./ui/button";
+
+/**
+ * DeleteConfirmDialog — subscribes to `pendingDeletePaths` in the file-tree store
+ * and shows a confirmation dialog for keyboard-triggered bulk deletes.
+ */
+export function DeleteConfirmDialog() {
+  const pendingDeletePaths = useFileTreeStore((s) => s.pendingDeletePaths);
+  const cancelDelete = useFileTreeStore((s) => s.cancelDelete);
+  const executePendingDelete = useFileTreeStore((s) => s.executePendingDelete);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const fileNames = useMemo(
+    () => (pendingDeletePaths ?? []).map((p) => p.split("/").pop() ?? p),
+    [pendingDeletePaths],
+  );
+
+  const handleConfirm = useCallback(async () => {
+    setIsDeleting(true);
+    try {
+      await executePendingDelete();
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [executePendingDelete]);
+
+  const handleCancel = useCallback(() => {
+    cancelDelete();
+  }, [cancelDelete]);
+
+  const count = pendingDeletePaths?.length ?? 0;
+
+  return (
+    <Dialog open={!!pendingDeletePaths} onOpenChange={(open) => { if (!open) cancelDelete(); }}>
+      <DialogContent className="border-ctp-surface1 bg-overlay-mantle sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-ctp-text">
+            Delete {count === 1 ? "item" : `${count} items`}
+          </DialogTitle>
+          <DialogDescription className="text-ctp-subtext0">
+            {count === 1 ? (
+              <>
+                Are you sure you want to delete{" "}
+                <span className="font-medium text-ctp-text">{fileNames[0]}</span>?
+                {" "}This action cannot be undone.
+              </>
+            ) : (
+              <>
+                Are you sure you want to delete these {count} items? This action cannot be undone.
+                <ul className="mt-2 max-h-32 overflow-y-auto space-y-0.5">
+                  {fileNames.map((name, i) => (
+                    <li key={i} className="truncate font-medium text-ctp-text text-app-sm">
+                      {name}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCancel}
+            className="border-ctp-surface1 text-ctp-subtext0 hover:bg-ctp-surface0 hover:text-ctp-text"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleConfirm}
+            disabled={isDeleting}
+            className="bg-ctp-red text-ctp-base hover:bg-ctp-red/90"
+          >
+            {isDeleting ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 interface FileTreeNodeProps {
   node: FileNode;

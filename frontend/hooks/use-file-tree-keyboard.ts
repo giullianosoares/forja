@@ -86,6 +86,21 @@ export function handleFileTreeKeyDown(e: React.KeyboardEvent): void {
     return;
   }
 
+  // Delete / Backspace — confirm delete of selected or focused items
+  if (e.key === "Delete" || e.key === "Backspace") {
+    e.preventDefault();
+    const store = useFileTreeStore.getState();
+    const selected = Object.keys(store.selectedPaths).filter((p) => store.selectedPaths[p]);
+    const pathsToDelete = selected.length > 0
+      ? selected
+      : store.focusedPath ? [store.focusedPath] : [];
+
+    if (pathsToDelete.length > 0) {
+      store.confirmDelete(pathsToDelete);
+    }
+    return;
+  }
+
   switch (e.key) {
     case "ArrowDown": {
       e.preventDefault();

@@ -7,7 +7,7 @@ import { ChevronsDownUp } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ErrorBoundary } from "./error-boundary";
-import { FileTreeNode } from "./file-tree-node";
+import { FileTreeNode, DeleteConfirmDialog } from "./file-tree-node";
 import { GitChangesPane } from "./git-changes-pane";
 
 /** Maximum pixel width for the file tree sidebar resizable panel. */
@@ -220,6 +220,8 @@ export function FileTreeSidebar() {
           projectPaths={[tree.root.path]}
         />
       </div>
+
+      <DeleteConfirmDialog />
     </div>
   );
 }
