@@ -380,7 +380,7 @@ describe("useFileTreeKeyboard", () => {
   describe("Cmd/Ctrl+V — paste", () => {
     it("should call pasteFromClipboard with parent dir when focused on a file", async () => {
       const { invoke } = await import("@/lib/ipc");
-      vi.mocked(invoke).mockResolvedValue(undefined);
+      vi.mocked(invoke).mockResolvedValue(null);
 
       setupStore({ focusedPath: "/project/README.md" });
       useFileTreeStore.setState({
@@ -392,12 +392,16 @@ describe("useFileTreeKeyboard", () => {
       const handler = handleFileTreeKeyDown;
       fireKey(handler, "v", { metaKey: true });
 
+      // Flush the async IIFE (invoke promise + fall-through)
+      await Promise.resolve();
+      await Promise.resolve();
+
       expect(pasteSpy).toHaveBeenCalledWith("/project");
     });
 
     it("should call pasteFromClipboard with the dir itself when focused on a directory", async () => {
       const { invoke } = await import("@/lib/ipc");
-      vi.mocked(invoke).mockResolvedValue(undefined);
+      vi.mocked(invoke).mockResolvedValue(null);
 
       setupStore({ focusedPath: "/project/src" });
       useFileTreeStore.setState({
@@ -408,6 +412,10 @@ describe("useFileTreeKeyboard", () => {
       const pasteSpy = vi.spyOn(useFileTreeStore.getState(), "pasteFromClipboard");
       const handler = handleFileTreeKeyDown;
       fireKey(handler, "v", { metaKey: true });
+
+      // Flush the async IIFE (invoke promise + fall-through)
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(pasteSpy).toHaveBeenCalledWith("/project/src");
     });

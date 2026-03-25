@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useFileTreeStore, findNode } from "@/stores/file-tree";
 import { flattenVisibleNodes, type FlatNode } from "@/components/file-tree-sidebar";
+import { invoke } from "@/lib/ipc";
 
 export function handleFileTreeKeyDown(e: React.KeyboardEvent): void {
   const state = useFileTreeStore.getState();
@@ -50,7 +51,17 @@ export function handleFileTreeKeyDown(e: React.KeyboardEvent): void {
       const targetDir = node?.isDir
         ? focused
         : focused.substring(0, focused.lastIndexOf("/"));
-      store.pasteFromClipboard(targetDir);
+
+      // Try image paste first (e.g. screenshot from Cmd+Shift+4)
+      void (async () => {
+        const imagePath = await invoke<string | null>("paste_clipboard_image", { targetDir });
+        if (imagePath) {
+          store.refreshTree();
+          return;
+        }
+        // Fall back to file clipboard paste
+        store.pasteFromClipboard(targetDir);
+      })();
     }
     return;
   }

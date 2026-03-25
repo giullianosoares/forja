@@ -839,6 +839,14 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle(
+  "paste_clipboard_image",
+  async (_event, args: { targetDir: string; filename?: string }) => {
+    const { saveClipboardImage } = await import("./clipboard.js");
+    return saveClipboardImage(args.targetDir, args.filename);
+  }
+);
+
 ipcMain.handle("reveal_in_finder", async (_event, args: { path: string }) => {
   shell.showItemInFolder(args.path);
 });
