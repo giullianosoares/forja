@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, RotateCw, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMarketplaceStore } from "@/stores/marketplace";
 import { usePluginsStore } from "@/stores/plugins";
 import { MarketplacePluginCard } from "./marketplace-plugin-card";
+import type { RegistryPlugin } from "@/lib/plugin-types";
 
 export function MarketplacePane() {
   const registry = useMarketplaceStore((s) => s.registry);
@@ -56,7 +57,67 @@ export function MarketplacePane() {
   const filteredPlugins = getFilteredPlugins();
   const installedFiltered = filteredPlugins.filter((p) => installedNames.has(p.name));
   const availableFiltered = filteredPlugins.filter((p) => !installedNames.has(p.name));
-  const tags = getAllTags();
+
+  // Local-only plugins: installed on filesystem but not in the registry
+  const localOnlyPlugins = useMemo(() => {
+    const registryAllNames = new Set(
+      (registry?.plugins ?? []).map((p) => p.name)
+    );
+    const q = searchQuery.toLowerCase().trim();
+
+    return installedPlugins
+      .filter((p) => !registryAllNames.has(p.manifest.name))
+      .filter((p) => {
+        // Apply search filter
+        if (q) {
+          const m = p.manifest;
+          const matchesSearch =
+            m.name.toLowerCase().includes(q) ||
+            m.displayName.toLowerCase().includes(q) ||
+            m.description.toLowerCase().includes(q) ||
+            (m.tags ?? []).some((t) => t.toLowerCase().includes(q));
+          if (!matchesSearch) return false;
+        }
+        // Apply tag filter
+        if (activeTag) {
+          if (!(p.manifest.tags ?? []).includes(activeTag)) return false;
+        }
+        return true;
+      })
+      .map(
+        (p): RegistryPlugin => ({
+          name: p.manifest.name,
+          displayName: p.manifest.displayName,
+          description: p.manifest.description,
+          author: p.manifest.author,
+          icon: p.manifest.icon,
+          version: p.manifest.version,
+          downloadUrl: "",
+          sha256: "",
+          tags: p.manifest.tags ?? [],
+          downloads: 0,
+          scope: p.manifest.scope,
+          minForjaVersion: p.manifest.minForjaVersion,
+          permissions: p.manifest.permissions,
+        })
+      );
+  }, [installedPlugins, registry, searchQuery, activeTag]);
+
+  // Collect tags from both registry and local plugins
+  const tags = useMemo(() => {
+    const tagSet = new Set<string>();
+    for (const tag of getAllTags()) {
+      tagSet.add(tag);
+    }
+    for (const p of installedPlugins) {
+      for (const tag of p.manifest.tags ?? []) {
+        tagSet.add(tag);
+      }
+    }
+    return [...tagSet].sort();
+  }, [getAllTags, installedPlugins]);
+
+  const totalInstalled = installedFiltered.length + localOnlyPlugins.length;
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-ctp-base">
@@ -151,17 +212,17 @@ export function MarketplacePane() {
         {!loading && !error && registry && (
           <>
             {/* Empty state */}
-            {filteredPlugins.length === 0 && (
+            {filteredPlugins.length === 0 && localOnlyPlugins.length === 0 && (
               <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
                 <p className="text-app-sm text-ctp-overlay1">No plugins found</p>
               </div>
             )}
 
             {/* Installed section */}
-            {installedFiltered.length > 0 && (
+            {totalInstalled > 0 && (
               <div className="px-3 pb-2 pt-3">
                 <p className="mb-2 text-app-sm font-semibold uppercase tracking-wide text-ctp-overlay1">
-                  Installed ({installedFiltered.length})
+                  Installed ({totalInstalled})
                 </p>
                 <div className="flex flex-col gap-2">
                   {installedFiltered.map((plugin) => {
@@ -180,6 +241,17 @@ export function MarketplacePane() {
                       />
                     );
                   })}
+                  {localOnlyPlugins.map((plugin) => (
+                    <MarketplacePluginCard
+                      key={plugin.name}
+                      plugin={plugin}
+                      installed={true}
+                      installedVersion={plugin.version}
+                      isLocal={true}
+                      onInstall={installPlugin}
+                      onUninstall={uninstallPlugin}
+                    />
+                  ))}
                 </div>
               </div>
             )}
