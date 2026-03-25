@@ -210,13 +210,6 @@ export function TilingLayout() {
       // Check which block types exist in this tabset
       const children = node.getChildren() ?? [];
 
-      // Hide maximize button for empty tabsets
-      if (children.length === 0) {
-        renderValues.buttons = [];
-        renderValues.stickyButtons = [];
-        return;
-      }
-
       // Notification dot: check if any terminal tab in this tabset belongs to a notified project
       const hasNotifiedTab = children.some((child) => {
         const tabId = (child as TabNode).getId();
@@ -315,9 +308,6 @@ export function TilingLayout() {
       }
 
       // --- Content: name label with double-click handling ---
-      // ALL tabs block double-click propagation to prevent FlexLayout's maximize
-      // toggle on double-click. The maximize button in the tabset header still works
-      // because it uses onClick, not onDoubleClick.
       const isRenamable = RENAMABLE_BLOCK_TYPES.has(component);
 
       const handleDoubleClick = (e: React.MouseEvent) => {

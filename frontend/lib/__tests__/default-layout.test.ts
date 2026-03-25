@@ -12,7 +12,7 @@ describe("default-layout", () => {
   it("has global settings with correct defaults", () => {
     expect(DEFAULT_LAYOUT.global?.tabEnableClose).toBe(true);
     expect(DEFAULT_LAYOUT.global?.tabEnableRename).toBe(false);
-    expect(DEFAULT_LAYOUT.global?.tabSetEnableMaximize).toBe(true);
+    expect(DEFAULT_LAYOUT.global?.tabSetEnableMaximize).toBe(false);
     expect(DEFAULT_LAYOUT.global?.splitterSize).toBe(6);
     expect(DEFAULT_LAYOUT.global?.tabSetMinWidth).toBe(400);
     expect(DEFAULT_LAYOUT.global?.tabSetMinHeight).toBe(100);

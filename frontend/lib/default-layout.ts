@@ -4,7 +4,7 @@ export const DEFAULT_LAYOUT: IJsonModel = {
   global: {
     tabEnableClose: true,
     tabEnableRename: false,
-    tabSetEnableMaximize: true,
+    tabSetEnableMaximize: false,
     splitterSize: 6,
     tabSetMinWidth: 400,
     tabSetMinHeight: 100,

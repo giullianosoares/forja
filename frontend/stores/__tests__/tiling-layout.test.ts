@@ -638,7 +638,7 @@ describe("tiling-layout store", () => {
   });
 
   describe("plugin block behaviour", () => {
-    it("disables drop and maximize on plugin block tabset and sets minWidth=400", () => {
+    it("disables drop on plugin block tabset and sets minWidth=400", () => {
       // Add a terminal to main first so docking RIGHT creates a new tabset
       useTilingLayoutStore.getState().addBlock(
         { type: "terminal", sessionType: "terminal" },
@@ -659,7 +659,6 @@ describe("tiling-layout store", () => {
       const parentTabset = node!.getParent();
       expect((parentTabset as any).isEnableTabStrip()).toBe(true);
       expect((parentTabset as any).isEnableDrop()).toBe(false);
-      expect((parentTabset as any).isEnableMaximize()).toBe(false);
       // Plugin tabset must have minWidth=400
       const attrMinWidth = (parentTabset as any).getAttrMinWidth?.() ?? 0;
       expect(attrMinWidth).toBeGreaterThanOrEqual(400);
@@ -985,7 +984,7 @@ describe("tiling-layout store", () => {
       );
     });
 
-    it("marketplace tabset gets minWidth=400 and disables drop/maximize", () => {
+    it("marketplace tabset gets minWidth=400 and disables drop", () => {
       useTilingLayoutStore.getState().addBlock(
         { type: "marketplace" },
         undefined,
@@ -999,7 +998,6 @@ describe("tiling-layout store", () => {
       expect(tabset).toBeDefined();
       expect(tabset.getAttrMinWidth?.() ?? 0).toBeGreaterThanOrEqual(400);
       expect(tabset.isEnableDrop?.()).toBe(false);
-      expect(tabset.isEnableMaximize?.()).toBe(false);
     });
 
     it("first plugin/marketplace tabset opens with a small weight to start at minWidth", () => {

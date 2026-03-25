@@ -188,23 +188,6 @@ function removeEmptyTabsets(model: Model): void {
 }
 
 /**
- * Un-maximizes any tabset that is maximized but has no children.
- * This prevents a stale persisted layout where tabset-main was saved
- * maximized and empty from blocking the entire UI.
- */
-function unmaximizeEmptyTabsets(model: Model): void {
-  model.visitNodes((node) => {
-    if (
-      node.getType() === "tabset" &&
-      (node as any).isMaximized?.() &&
-      (node as any).getChildren().length === 0
-    ) {
-      model.doAction(Actions.maximizeToggle(node.getId()));
-    }
-  });
-}
-
-/**
  * Strips empty tabsets (except tabset-main) from a layout JSON *before*
  * Model.fromJson(). This handles the case where deleteTabset action is a
  * no-op on freshly-parsed models with undefined enableDeleteWhenEmpty.
@@ -574,14 +557,13 @@ export const useTilingLayoutStore = create<TilingLayoutState>((set, get) => ({
       }
     }
 
-    // Plugin/marketplace tabset: keep tab strip for drag, but disable drop and maximize
+    // Plugin/marketplace tabset: keep tab strip for drag, but disable drop
     if (config.type === "plugin" || config.type === "marketplace") {
       const node = model.getNodeById(id);
       const parentTabsetId = node?.getParent()?.getId();
       if (parentTabsetId) {
         const attrs: Record<string, unknown> = {
           enableDrop: false,
-          enableMaximize: false,
           minWidth: PLUGIN_TABSET_MIN_WIDTH,
         };
         // When creating the tabset for the first time, use a small weight so
@@ -683,7 +665,6 @@ export const useTilingLayoutStore = create<TilingLayoutState>((set, get) => ({
       const cleaned = stripEmptyTabsetsFromJson(json);
       const model = Model.fromJson(cleaned);
       removeEmptyTabsets(model);
-      unmaximizeEmptyTabsets(model);
       enforceBlockMinWidths(model);
       set({ model, tabCount: countTabs(model) });
     } catch {
