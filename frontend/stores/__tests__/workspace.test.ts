@@ -8,11 +8,20 @@ import type { Workspace, WorkspaceProject } from "../workspace";
 import { _resetLoadWorkspacesGuard } from "../workspace";
 
 const mockInvoke = vi.fn();
+const mockSaveCurrentProjectToDisk = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/lib/ipc", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
   getCurrentWindow: () => ({ label: "main" }),
 }));
+
+vi.mock("../projects", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../projects")>();
+  return {
+    ...actual,
+    saveCurrentProjectToDisk: (...args: unknown[]) => mockSaveCurrentProjectToDisk(...args),
+  };
+});
 
 const makeProject = (path: string): WorkspaceProject => ({
   path,
@@ -47,6 +56,7 @@ describe("useWorkspaceStore", () => {
       loading: false,
     });
     mockInvoke.mockReset();
+    mockSaveCurrentProjectToDisk.mockReset().mockResolvedValue(undefined);
     // Default: any unmatched invoke call returns a resolved Promise (fire-and-forget calls like close_pty)
     mockInvoke.mockResolvedValue(undefined);
   });
@@ -634,7 +644,6 @@ describe("useWorkspaceStore", () => {
       mockInvoke.mockImplementation((cmd: string, args?: any) => {
         if (cmd === "set_active_workspace") return Promise.resolve(undefined);
         if (cmd === "get_workspace_projects") return Promise.resolve([]);
-        if (cmd === "save_ui_preferences") return Promise.resolve(undefined);
         if (cmd === "get_ui_preferences") {
           expect(args).toEqual({ workspaceId: "ws-2", projectPath: "/project/new" });
           return Promise.resolve(savedUiPrefs);
@@ -645,12 +654,8 @@ describe("useWorkspaceStore", () => {
 
       await useWorkspaceStore.getState().activateWorkspace("ws-2");
 
-      // Should save outgoing workspace layout (only when a project path is known)
-      expect(mockInvoke).toHaveBeenCalledWith("save_ui_preferences", expect.objectContaining({
-        workspaceId: "ws-1",
-        layoutJson: expect.any(Object),
-        projectPath: "/project/old",
-      }));
+      // Should persist outgoing workspace's full project state (tabs, layout, etc.)
+      expect(mockSaveCurrentProjectToDisk).toHaveBeenCalledWith("/project/old");
 
       // Should fetch incoming workspace's UI prefs
       expect(mockInvoke).toHaveBeenCalledWith("get_ui_preferences", { workspaceId: "ws-2", projectPath: "/project/new" });
@@ -736,7 +741,6 @@ describe("useWorkspaceStore", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "set_active_workspace") return Promise.resolve(undefined);
         if (cmd === "get_workspace_projects") return Promise.resolve([]);
-        if (cmd === "save_ui_preferences") return Promise.resolve(undefined);
         if (cmd === "get_ui_preferences") return Promise.resolve({ layoutJson: savedLayoutWithTerminals });
         if (cmd === "get_project_ui_state") return Promise.resolve(null);
         return Promise.resolve(undefined);

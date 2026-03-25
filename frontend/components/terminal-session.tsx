@@ -276,17 +276,7 @@ export const TerminalSession = memo(function TerminalSession({ tabId, path, isVi
             }
 
             // Check if this is a restored session that had already exited.
-            // If so, just show the buffer without spawning a new process.
             const tab = useTerminalTabsStore.getState().tabs?.find(t => t.id === tabId);
-            if (tab && !tab.isRunning) {
-              // Session had ended before app restart — auto-close for AI CLIs
-              if (sessionType && sessionType !== "terminal") {
-                setTimeout(() => {
-                  useTerminalTabsStore.getState().removeTab(tabId);
-                }, 500);
-              }
-              return;
-            }
 
             // Build resume args if we have a stored session ID
             let resumeArgs: string[] | undefined;
@@ -294,12 +284,27 @@ export const TerminalSession = memo(function TerminalSession({ tabId, path, isVi
             if (cliSessionId && sessionType && sessionType !== "terminal") {
               const def = CLI_REGISTRY[sessionType];
               if (def?.resumeFlag) {
-                // Handle both "--resume SESSION_ID" and "--resume=SESSION_ID" formats
                 if (def.resumeFlag.endsWith("=")) {
                   resumeArgs = [`${def.resumeFlag}${cliSessionId}`];
                 } else {
                   resumeArgs = [def.resumeFlag, cliSessionId];
                 }
+              }
+            }
+
+            // If the session exited before app restart and has no resume ID,
+            // auto-close AI CLI tabs (plain terminals stay with their buffer).
+            if (tab && !tab.isRunning) {
+              if (resumeArgs) {
+                // Resumable session — mark as running and proceed to spawn with --resume
+                useTerminalTabsStore.getState().markTabRunning(tab.id);
+              } else if (sessionType && sessionType !== "terminal") {
+                setTimeout(() => {
+                  useTerminalTabsStore.getState().removeTab(tabId);
+                }, 500);
+                return;
+              } else {
+                return;
               }
             }
 

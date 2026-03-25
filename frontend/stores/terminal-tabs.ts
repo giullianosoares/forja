@@ -32,6 +32,7 @@ interface TerminalTabsState {
   removeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   markTabExited: (id: string) => void;
+  markTabRunning: (id: string) => void;
   /** Renames a tab with a custom user-defined name. Empty string clears the custom name. */
   renameTab: (id: string, name: string) => void;
   toggleTerminalFullscreen: () => void;
@@ -139,6 +140,13 @@ export const useTerminalTabsStore = create<TerminalTabsState>((set, get) => ({
     set((state) => ({
       tabs: state.tabs.map((t) =>
         t.id === id ? { ...t, isRunning: false } : t
+      ),
+    })),
+
+  markTabRunning: (id: string) =>
+    set((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.id === id ? { ...t, isRunning: true } : t
       ),
     })),
 
