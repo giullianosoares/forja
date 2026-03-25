@@ -152,6 +152,10 @@ export function CommandPalette() {
   const handleCommand = (command: string) => {
     switch (command) {
       case "new-session":
+        if (!useFileTreeStore.getState().currentPath) {
+          close();
+          return;
+        }
         open("sessions");
         return; // return early to avoid close()
       case "go-to-project":

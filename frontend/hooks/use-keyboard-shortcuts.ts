@@ -57,6 +57,7 @@ export function useKeyboardShortcuts({
       }
       if (mod && event.shiftKey && event.key.toLowerCase() === "t") {
         event.preventDefault();
+        if (!useFileTreeStore.getState().currentPath) return;
         useCommandPaletteStore.getState().open("sessions");
         return;
       }
@@ -136,6 +137,7 @@ export function useKeyboardShortcuts({
       }
       if (mod && event.shiftKey && event.key.toLowerCase() === "e") {
         event.preventDefault();
+        if (!useFileTreeStore.getState().currentPath) return;
         if (tilingStore.hasBlock("tab-file-tree")) {
           tilingStore.selectTab("tab-file-tree");
         } else {
