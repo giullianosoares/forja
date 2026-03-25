@@ -581,11 +581,15 @@ describe("useWorkspaceStore", () => {
     });
 
     it("saves outgoing layout and restores incoming layout on workspace switch", async () => {
-      const ws = makeWorkspace({
+      const ws1 = makeWorkspace({
+        id: "ws-1",
+        projects: [makeProject("/project/old")],
+      });
+      const ws2 = makeWorkspace({
         id: "ws-2",
         projects: [makeProject("/project/new")],
       });
-      useWorkspaceStore.setState({ workspaces: [ws], activeWorkspaceId: "ws-1" });
+      useWorkspaceStore.setState({ workspaces: [ws1, ws2], activeWorkspaceId: "ws-1" });
 
       const mockLoadProjectTree = vi.fn().mockResolvedValue(undefined);
       const mockOpenProjectPath = vi.fn();
@@ -641,10 +645,11 @@ describe("useWorkspaceStore", () => {
 
       await useWorkspaceStore.getState().activateWorkspace("ws-2");
 
-      // Should save outgoing workspace layout
+      // Should save outgoing workspace layout (only when a project path is known)
       expect(mockInvoke).toHaveBeenCalledWith("save_ui_preferences", expect.objectContaining({
         workspaceId: "ws-1",
         layoutJson: expect.any(Object),
+        projectPath: "/project/old",
       }));
 
       // Should fetch incoming workspace's UI prefs
