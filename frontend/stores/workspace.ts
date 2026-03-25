@@ -5,6 +5,7 @@ import { parseLayoutJson } from "@/lib/layout-migration";
 import { useFileTreeStore } from "./file-tree";
 import { useProjectsStore } from "./projects";
 import { useTerminalTabsStore } from "./terminal-tabs";
+import { useSessionStateStore } from "./session-state";
 import { useTilingLayoutStore } from "./tiling-layout";
 
 export type WorkspaceColor =
@@ -210,8 +211,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       useProjectsStore.setState({ activeProjectPath: targetProjectPath });
     }
 
-    // Close existing PTY sessions before clearing tabs to prevent orphan processes
+    // Clean up session state BEFORE closing PTYs so that the pty:exit
+    // events do not trigger spurious "finished with new output" notifications.
     const existingTabs = useTerminalTabsStore.getState().tabs;
+    for (const tab of existingTabs) {
+      useSessionStateStore.getState().cleanup(tab.id);
+    }
+
+    // Close existing PTY sessions before clearing tabs to prevent orphan processes
     for (const tab of existingTabs) {
       invoke("close_pty", { tabId: tab.id }).catch(() => {});
     }
