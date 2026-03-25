@@ -502,6 +502,12 @@ ipcMain.handle("save_project_ui_state", async (_event, args: { workspaceId: stri
   config.saveProjectUiState(args.workspaceId, args.path, args.state);
 });
 
+// CLI session discovery (reads Claude Code's session data)
+ipcMain.handle("get_cli_sessions", (_event, args: { projectPath: string; limit?: number }) => {
+  const { getClaudeSessions } = require("./cli-sessions.js") as typeof import("./cli-sessions.js");
+  return getClaudeSessions(args.projectPath, args.limit);
+});
+
 // Last active project path (workspace-scoped)
 ipcMain.handle("set_last_active_project_path", async (_event, args: { workspaceId: string; projectPath: string }) => {
   const config = await getConfig();
