@@ -221,51 +221,140 @@ describe("usePty", () => {
     expect(callArgs[1]).not.toHaveProperty("resumeArgs");
   });
 
-  describe("session ID detection with ANSI codes", () => {
+  describe("session ID detection via PTY regex (CLIs without filesystem detection)", () => {
     beforeEach(() => {
-      // Set up a claude tab in the store so the detection logic has a tab to find
+      // Use gemini (has sessionIdPattern but NO sessionDirType) to test regex detection
       useTerminalTabsStore.setState({
         tabs: [
           {
-            id: "tab-ansi",
+            id: "tab-gemini",
+            name: "Gemini CLI",
+            path: "/test",
+            isRunning: true,
+            sessionType: "gemini",
+          },
+        ],
+        activeTabId: "tab-gemini",
+      });
+    });
+
+    it("detects session ID from ANSI-wrapped PTY output", () => {
+      renderHook(() => usePty({ tabId: "tab-gemini" }));
+
+      act(() => {
+        mockDispatcher._simulateData(
+          "tab-gemini",
+          "\x1b[2msession:\x1b[0m \x1b[33mabc-def-123\x1b[0m"
+        );
+      });
+
+      const tab = useTerminalTabsStore.getState().tabs.find(
+        (t) => t.id === "tab-gemini"
+      );
+      expect(tab?.cliSessionId).toBe("abc-def-123");
+    });
+
+    it("detects session ID from plain text PTY output", () => {
+      renderHook(() => usePty({ tabId: "tab-gemini" }));
+
+      act(() => {
+        mockDispatcher._simulateData("tab-gemini", "session: deadbeef-1234");
+      });
+
+      const tab = useTerminalTabsStore.getState().tabs.find(
+        (t) => t.id === "tab-gemini"
+      );
+      expect(tab?.cliSessionId).toBe("deadbeef-1234");
+    });
+  });
+
+  describe("session ID detection skips PTY regex for CLIs with filesystem detection", () => {
+    beforeEach(() => {
+      // Claude has sessionDirType: "claude-dir" — PTY regex should be skipped
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-claude",
             name: "Claude Code",
             path: "/test",
             isRunning: true,
             sessionType: "claude",
           },
         ],
-        activeTabId: "tab-ansi",
+        activeTabId: "tab-claude",
       });
     });
 
-    it("detects session ID from ANSI-wrapped PTY output", () => {
-      renderHook(() => usePty({ tabId: "tab-ansi" }));
+    it("does NOT set cliSessionId from PTY output for Claude (uses filesystem instead)", () => {
+      renderHook(() => usePty({ tabId: "tab-claude" }));
 
-      // Simulate PTY data with ANSI escape codes wrapping the session info
       act(() => {
-        mockDispatcher._simulateData(
-          "tab-ansi",
-          "\x1b[2msession:\x1b[0m \x1b[33mabc-def-123\x1b[0m"
-        );
+        mockDispatcher._simulateData("tab-claude", "session: abc-def-123");
       });
 
       const tab = useTerminalTabsStore.getState().tabs.find(
-        (t) => t.id === "tab-ansi"
+        (t) => t.id === "tab-claude"
       );
-      expect(tab?.cliSessionId).toBe("abc-def-123");
+      // Should remain undefined because Claude uses filesystem-based detection
+      expect(tab?.cliSessionId).toBeUndefined();
+    });
+  });
+
+  describe("spawn triggers filesystem session detection for Claude", () => {
+    beforeEach(() => {
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-fs",
+            name: "Claude Code",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "claude",
+          },
+        ],
+        activeTabId: "tab-fs",
+      });
     });
 
-    it("detects session ID from plain text PTY output", () => {
-      renderHook(() => usePty({ tabId: "tab-ansi" }));
+    it("calls get_cli_sessions before and polls after spawn for Claude", async () => {
+      // First call: get_cli_sessions to snapshot existing sessions (before spawn)
+      mockInvoke
+        .mockResolvedValueOnce([{ sessionId: "old-session-1", modified: "2024-01-01" }]) // get_cli_sessions (snapshot)
+        .mockResolvedValueOnce("tab-fs") // spawn_pty
+        .mockResolvedValueOnce([ // get_cli_sessions (poll — returns new session)
+          { sessionId: "new-session-abc", modified: "2024-01-02" },
+          { sessionId: "old-session-1", modified: "2024-01-01" },
+        ]);
 
-      act(() => {
-        mockDispatcher._simulateData("tab-ansi", "session: deadbeef-1234");
+      const { result } = renderHook(() => usePty({ tabId: "tab-fs" }));
+
+      await act(async () => {
+        await result.current.spawn("/test/project", "claude");
       });
 
-      const tab = useTerminalTabsStore.getState().tabs.find(
-        (t) => t.id === "tab-ansi"
+      // Wait for the async filesystem detection to complete
+      await act(async () => {
+        await vi.waitFor(() => {
+          const tab = useTerminalTabsStore.getState().tabs.find((t) => t.id === "tab-fs");
+          expect(tab?.cliSessionId).toBe("new-session-abc");
+        }, { timeout: 5000 });
+      });
+    });
+
+    it("skips filesystem detection when resumeArgs are provided", async () => {
+      mockInvoke.mockResolvedValueOnce("tab-fs"); // spawn_pty only — no get_cli_sessions calls
+
+      const { result } = renderHook(() => usePty({ tabId: "tab-fs" }));
+
+      await act(async () => {
+        await result.current.spawn("/test/project", "claude", ["--resume", "existing-id"]);
+      });
+
+      // Should NOT have called get_cli_sessions
+      const cliSessionsCalls = mockInvoke.mock.calls.filter(
+        (c) => c[0] === "get_cli_sessions"
       );
-      expect(tab?.cliSessionId).toBe("deadbeef-1234");
+      expect(cliSessionsCalls).toHaveLength(0);
     });
   });
 });

@@ -2,13 +2,50 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, getCurrentWindow } from "@/lib/ipc";
 import { ptyDispatcher } from "@/lib/pty-dispatcher";
 import { CLI_REGISTRY } from "@/lib/cli-registry";
+import type { CliId } from "@/lib/cli-registry";
 import { stripAnsi } from "@/lib/strip-ansi";
 import { useTerminalTabsStore } from "@/stores/terminal-tabs";
+
+interface CliSessionEntry {
+  sessionId: string;
+  summary?: string;
+  firstPrompt?: string;
+  modified: string;
+}
 
 interface UsePtyOptions {
   tabId: string;
   onData?: (data: string) => void;
   onExit?: (code: number) => void;
+}
+
+/**
+ * Polls the filesystem to detect a new CLI session ID that appeared after spawn.
+ * Compares against a set of known session IDs to find the newly created one.
+ */
+async function detectSessionFromFilesystem(
+  projectPath: string,
+  knownSessionIds: Set<string>,
+  maxAttempts = 15,
+  intervalMs = 2000,
+): Promise<string | null> {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const sessions = await invoke<CliSessionEntry[]>("get_cli_sessions", {
+        projectPath,
+        limit: 5,
+      });
+      // The most recent session that wasn't in our known set is the new one
+      const newSession = sessions.find((s) => !knownSessionIds.has(s.sessionId));
+      if (newSession) return newSession.sessionId;
+    } catch {
+      // IPC call failed — keep trying
+    }
+    if (i < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+  }
+  return null;
 }
 
 export function usePty(options: UsePtyOptions) {
@@ -30,13 +67,15 @@ export function usePty(options: UsePtyOptions) {
     ptyDispatcher.registerData(tabId, (data) => {
       onDataRef.current?.(data);
 
-      // Try to detect session ID from early output (session ID appears in the first chunks)
+      // Try to detect session ID from early output (fallback for CLIs without
+      // filesystem-based detection — sessionDirType takes priority when available)
       if (!sessionIdFound && chunkCount < 100) {
         chunkCount++;
         const tab = useTerminalTabsStore.getState().tabs.find((t) => t.id === tabId);
         if (tab && tab.sessionType !== "terminal") {
           const def = CLI_REGISTRY[tab.sessionType];
-          if (def?.sessionIdPattern) {
+          // Skip PTY regex detection if this CLI uses filesystem detection
+          if (def?.sessionIdPattern && !def.sessionDirType) {
             const match = stripAnsi(data).match(def.sessionIdPattern);
             if (match?.[1]) {
               sessionIdFound = true;
@@ -59,15 +98,46 @@ export function usePty(options: UsePtyOptions) {
   }, []);
 
   const spawn = useCallback(async (path: string, sessionType?: string, resumeArgs?: string[]): Promise<string> => {
-    const tabId = await invoke<string>("spawn_pty", {
-      tabId: tabIdRef.current,
+    const tabId = tabIdRef.current;
+
+    // Snapshot existing sessions BEFORE spawn so we can detect the new one
+    let knownSessionIds: Set<string> | null = null;
+    const cliDef = sessionType && sessionType !== "terminal"
+      ? CLI_REGISTRY[sessionType as CliId]
+      : null;
+
+    if (cliDef?.sessionDirType === "claude-dir" && !resumeArgs) {
+      try {
+        const existing = await invoke<CliSessionEntry[]>("get_cli_sessions", {
+          projectPath: path,
+          limit: 50,
+        });
+        knownSessionIds = new Set(existing.map((s) => s.sessionId));
+      } catch {
+        // Non-fatal: filesystem detection will still work, just may pick up an old session
+      }
+    }
+
+    const resultTabId = await invoke<string>("spawn_pty", {
+      tabId,
       path,
       sessionType,
       windowLabel: getCurrentWindow().label,
       ...(resumeArgs ? { resumeArgs } : {}),
     });
     setIsRunning(true);
-    return tabId;
+
+    // Start filesystem-based session detection after spawn (async, non-blocking)
+    if (cliDef?.sessionDirType === "claude-dir" && !resumeArgs && knownSessionIds) {
+      detectSessionFromFilesystem(path, knownSessionIds).then((newSessionId) => {
+        if (newSessionId) {
+          useTerminalTabsStore.getState().setCliSessionId(tabId, newSessionId);
+        }
+      });
+    }
+
+    // If resuming, the session ID is already stored on the tab
+    return resultTabId;
   }, []);
 
   const write = useCallback(

@@ -13,6 +13,9 @@ export interface CliDefinition {
   chatSupported: boolean;
   resumeFlag?: string;           // e.g. "--resume"
   sessionIdPattern?: RegExp;     // regex to extract session ID from PTY output
+  /** When set, session IDs are detected from the filesystem instead of PTY output.
+   *  "claude-dir" reads from ~/.claude/projects/<encoded-path>/ */
+  sessionDirType?: "claude-dir";
 }
 
 export const TERMINAL_ICON = "./images/terminal.svg";
@@ -28,6 +31,7 @@ export const CLI_REGISTRY: Record<CliId, CliDefinition> = {
     chatSupported: true,
     resumeFlag: "--resume",
     sessionIdPattern: /session:\s+([a-f0-9-]+)/i,
+    sessionDirType: "claude-dir",
   },
   gemini: {
     id: "gemini",
