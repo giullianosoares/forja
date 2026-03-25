@@ -93,6 +93,10 @@ contextBridge.exposeInMainWorld("forja", {
   sidebar: {
     setBadge: (text: string) => request("sidebar.setBadge", { text }),
   },
+  editor: {
+    open: (path: string, options?: { preview?: boolean }) =>
+      request("editor.open", { path, ...options }),
+  },
   on: (event: string, callback: (data: unknown) => void) => {
     if (!eventListeners.has(event)) {
       eventListeners.set(event, new Set());

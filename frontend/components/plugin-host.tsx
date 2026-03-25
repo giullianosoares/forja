@@ -6,6 +6,7 @@ import { useThemeStore } from "@/stores/theme";
 import { useProjectsStore } from "@/stores/projects";
 import { buildPluginThemeCSS, buildPluginThemePayload, buildPluginOpacityCSS } from "@/lib/plugin-theme";
 import { useUserSettingsStore } from "@/stores/user-settings";
+import { useFilePreviewStore } from "@/stores/file-preview";
 import { paneFocusRegistry } from "@/lib/pane-focus-registry";
 import type { PluginPermission, PluginPermissionGrant } from "@/lib/plugin-types";
 
@@ -162,6 +163,32 @@ export function PluginHost({ pluginName, nodeId }: PluginHostProps) {
           id: data.id,
           success: true,
           result: buildPluginThemePayload(theme),
+        });
+        return;
+      }
+
+      // Intercept editor.open — open file in file preview pane (frontend-only)
+      if (data.method === "editor.open") {
+        const wv = webviewRef.current as unknown as {
+          send: (channel: string, data: unknown) => void;
+        } | null;
+        const filePath = typeof data.args.path === "string" ? data.args.path : null;
+        if (!filePath) {
+          wv?.send("plugin:response", {
+            id: data.id,
+            success: false,
+            error: "editor.open requires a valid path argument",
+          });
+          return;
+        }
+        // Resolve relative paths against the active project directory
+        const activePath = useProjectsStore.getState().activeProjectPath;
+        const resolvedPath = filePath.startsWith("/") ? filePath : (activePath ? `${activePath}/${filePath}` : filePath);
+        await useFilePreviewStore.getState().loadFile(resolvedPath);
+        wv?.send("plugin:response", {
+          id: data.id,
+          success: true,
+          result: { opened: true },
         });
         return;
       }
