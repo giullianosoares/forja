@@ -23,6 +23,26 @@ export function handleFileTreeKeyDown(e: React.KeyboardEvent): void {
 
   const currentNode = currentIndex >= 0 ? flatNodes[currentIndex] : null;
 
+  // Space — toggle selection of focused item
+  if (e.key === " ") {
+    e.preventDefault();
+    const focusedPath = useFileTreeStore.getState().focusedPath;
+    if (focusedPath) {
+      useFileTreeStore.getState().toggleSelect(focusedPath);
+    }
+    return;
+  }
+
+  // F2 — start rename of focused item
+  if (e.key === "F2") {
+    e.preventDefault();
+    const focusedPath = useFileTreeStore.getState().focusedPath;
+    if (focusedPath) {
+      useFileTreeStore.getState().startRename(focusedPath);
+    }
+    return;
+  }
+
   switch (e.key) {
     case "ArrowDown": {
       e.preventDefault();
@@ -53,7 +73,7 @@ export function handleFileTreeKeyDown(e: React.KeyboardEvent): void {
       if (currentNode.node.isDir) {
         state.toggleExpanded(currentNode.node.path);
       } else {
-        state.selectFile(currentNode.node.path);
+        state.pinFile(currentNode.node.path);
       }
       break;
     }

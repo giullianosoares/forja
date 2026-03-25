@@ -85,6 +85,8 @@ interface FileTreeState {
   activeProjectPath: string | null;
   isOpenByProject: Record<string, boolean>;
   focusedPath: string | null;
+  selectedPaths: Record<string, boolean>;
+  renamingPath: string | null;
 
   toggleSidebar: () => void;
   setFocusedPath: (path: string | null) => void;
@@ -101,6 +103,10 @@ interface FileTreeState {
   collapseAll: () => void;
   selectFile: (path: string) => Promise<void>;
   pinFile: (path: string) => void;
+  toggleSelect: (path: string) => void;
+  clearSelection: () => void;
+  startRename: (path: string) => void;
+  stopRename: () => void;
   saveSidebarStateForProject: (projectPath: string) => void;
   restoreSidebarStateForProject: (projectPath: string) => void;
 }
@@ -138,6 +144,8 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => {
     activeProjectPath: null,
     isOpenByProject: {},
     focusedPath: null,
+    selectedPaths: {},
+    renamingPath: null,
 
     toggleSidebar: () => set((state) => ({ isOpen: !state.isOpen })),
     setFocusedPath: (path) => set({ focusedPath: path }),
@@ -363,6 +371,23 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => {
     pinFile: (path: string) => {
       useFilePreviewStore.getState().loadFile(path, { pin: true });
     },
+
+    toggleSelect: (path) =>
+      set((s) => {
+        const next = { ...s.selectedPaths };
+        if (next[path]) {
+          delete next[path];
+        } else {
+          next[path] = true;
+        }
+        return { selectedPaths: next };
+      }),
+
+    clearSelection: () => set({ selectedPaths: {} }),
+
+    startRename: (path) => set({ renamingPath: path }),
+
+    stopRename: () => set({ renamingPath: null }),
 
     saveSidebarStateForProject: (projectPath: string) => {
       const { isOpen, isOpenByProject } = get();

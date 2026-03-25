@@ -71,6 +71,8 @@ describe("useFileTreeKeyboard", () => {
       trees: {},
       activeProjectPath: null,
       focusedPath: null,
+      selectedPaths: {},
+      renamingPath: null,
     });
     vi.clearAllMocks();
   });
@@ -140,15 +142,15 @@ describe("useFileTreeKeyboard", () => {
       expect(useFileTreeStore.getState().expandedPaths["/project/src"]).toBe(true);
     });
 
-    it("should select file when focused on a file", () => {
+    it("should pin file when focused on a file", () => {
       setupStore({
         focusedPath: "/project/README.md",
         expandedPaths: {},
       });
-      const selectFileSpy = vi.spyOn(useFileTreeStore.getState(), "selectFile");
+      const pinFileSpy = vi.spyOn(useFileTreeStore.getState(), "pinFile");
       const handler = handleFileTreeKeyDown;
       fireKey(handler, "Enter");
-      expect(selectFileSpy).toHaveBeenCalledWith("/project/README.md");
+      expect(pinFileSpy).toHaveBeenCalledWith("/project/README.md");
     });
 
     it("should do nothing when focusedPath is null", () => {
@@ -230,6 +232,60 @@ describe("useFileTreeKeyboard", () => {
       const handler = handleFileTreeKeyDown;
       fireKey(handler, "End");
       expect(useFileTreeStore.getState().focusedPath).toBe("/project/docs");
+    });
+  });
+
+  describe("Space", () => {
+    it("should toggle selection on the focused item", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, " ");
+      expect(useFileTreeStore.getState().selectedPaths["/project/README.md"]).toBe(true);
+    });
+
+    it("should deselect an already-selected item", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      useFileTreeStore.setState({ selectedPaths: { "/project/README.md": true } });
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, " ");
+      expect(useFileTreeStore.getState().selectedPaths["/project/README.md"]).toBeUndefined();
+    });
+
+    it("should call preventDefault when space is pressed", () => {
+      setupStore({ focusedPath: "/project/src" });
+      const handler = handleFileTreeKeyDown;
+      const { prevented } = fireKey(handler, " ");
+      expect(prevented).toBe(true);
+    });
+
+    it("should do nothing when focusedPath is null", () => {
+      setupStore();
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, " ");
+      expect(useFileTreeStore.getState().selectedPaths).toEqual({});
+    });
+  });
+
+  describe("F2", () => {
+    it("should set renamingPath to the focused item", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "F2");
+      expect(useFileTreeStore.getState().renamingPath).toBe("/project/README.md");
+    });
+
+    it("should call preventDefault when F2 is pressed", () => {
+      setupStore({ focusedPath: "/project/src" });
+      const handler = handleFileTreeKeyDown;
+      const { prevented } = fireKey(handler, "F2");
+      expect(prevented).toBe(true);
+    });
+
+    it("should do nothing when focusedPath is null", () => {
+      setupStore();
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "F2");
+      expect(useFileTreeStore.getState().renamingPath).toBeNull();
     });
   });
 
