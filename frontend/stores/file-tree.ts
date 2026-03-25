@@ -100,6 +100,7 @@ interface FileTreeState {
   isExpanded: (path: string) => boolean;
   collapseAll: () => void;
   selectFile: (path: string) => Promise<void>;
+  pinFile: (path: string) => void;
   saveSidebarStateForProject: (projectPath: string) => void;
   restoreSidebarStateForProject: (projectPath: string) => void;
 }
@@ -356,7 +357,11 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => {
 
     selectFile: async (path: string) => {
       useGitDiffStore.getState().clearSelection();
-      await useFilePreviewStore.getState().loadFile(path);
+      await useFilePreviewStore.getState().loadFilePreview(path);
+    },
+
+    pinFile: (path: string) => {
+      useFilePreviewStore.getState().loadFile(path, { pin: true });
     },
 
     saveSidebarStateForProject: (projectPath: string) => {

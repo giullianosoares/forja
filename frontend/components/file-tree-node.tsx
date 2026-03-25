@@ -40,6 +40,7 @@ export const FileTreeNode = memo(function FileTreeNode({
   const isFocused = useFileTreeStore((s) => s.focusedPath === node.path);
   const toggleExpanded = useFileTreeStore((s) => s.toggleExpanded);
   const selectFile = useFileTreeStore((s) => s.selectFile);
+  const pinFile = useFileTreeStore((s) => s.pinFile);
   const currentFile = useFilePreviewStore((s) => s.currentFile);
   const activeProjectPath = useFileTreeStore((s) => s.currentPath);
   const isActive = !node.isDir && currentFile === node.path;
@@ -91,6 +92,14 @@ export const FileTreeNode = memo(function FileTreeNode({
 
   const loadSubdirectory = useFileTreeStore((s) => s.loadSubdirectory);
 
+  const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+    };
+  }, []);
+
   const handleClick = useCallback(() => {
     if (renaming) return;
     useFileTreeStore.getState().setFocusedPath(node.path);
@@ -102,9 +111,25 @@ export const FileTreeNode = memo(function FileTreeNode({
         loadSubdirectory(node.path, effectiveProjectPath);
       }
     } else {
-      selectFile(node.path);
+      // Single click — preview mode (delayed to allow double-click to cancel)
+      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = setTimeout(() => {
+        selectFile(node.path);
+      }, 200);
     }
   }, [node.isDir, node.path, toggleExpanded, selectFile, renaming, expanded, node.children, effectiveProjectPath, loadSubdirectory]);
+
+  const handleDoubleClick = useCallback(() => {
+    if (renaming) return;
+    if (node.isDir) return;
+    // Cancel the pending single-click action
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
+    // Double click — pin the file
+    pinFile(node.path);
+  }, [node.isDir, node.path, pinFile, renaming]);
 
   const handleRenameStart = useCallback(() => {
     setRenameValue(node.name);
@@ -199,6 +224,7 @@ export const FileTreeNode = memo(function FileTreeNode({
       }`}
       style={{ paddingLeft: `${depth * 12 + 8}px` }}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
     >
       {node.isDir ? (
         <ChevronRight
