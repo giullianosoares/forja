@@ -9,7 +9,7 @@
 .flexlayout__layout {
   /* Core palette — mapped to Catppuccin / dynamic theme vars */
   --color-text: var(--color-ctp-text);
-  --color-background: var(--color-ctp-base);
+  --color-background: var(--color-ctp-mantle);
   --color-base: var(--color-ctp-base);
   --color-1: var(--color-ctp-mantle);
   --color-2: var(--color-ctp-crust, var(--color-ctp-mantle));
@@ -39,7 +39,7 @@
   --color-tabset-background: var(--color-ctp-mantle);
   --color-tabset-background-selected: var(--color-ctp-mantle);
   --color-tabset-background-maximized: var(--color-ctp-surface0);
-  --color-tabset-divider-line: var(--color-ctp-surface0);
+  --color-tabset-divider-line: transparent;
   --color-tabset-header-background: var(--color-ctp-mantle);
   --color-tabset-header: var(--color-ctp-text);
 
@@ -63,8 +63,8 @@
   --color-border-tab-unselected: var(--color-ctp-subtext0);
   --color-border-tab-unselected-background: var(--color-ctp-crust, var(--color-ctp-mantle));
 
-  /* Splitters — improved contrast */
-  --color-splitter: var(--color-ctp-surface0);
+  /* Splitters — transparent to create visual gap between panes */
+  --color-splitter: transparent;
   --color-splitter-hover: var(--color-ctp-surface2);
   --color-splitter-drag: var(--color-brand);
 
@@ -111,14 +111,15 @@
   position: absolute;
   inset: 0;
   border-radius: 8px;
-  box-shadow: inset 0 0 0 2px var(--color-brand);
+  box-shadow: inset 0 0 0 1px var(--color-ctp-surface1);
   pointer-events: none;
   z-index: 10;
-  opacity: 0;
-  transition: opacity 0.15s ease;
+  opacity: 1;
+  transition: box-shadow 0.15s ease;
 }
 
 .flexlayout__tabset:has(.flexlayout__tabset-selected)::after {
+  box-shadow: inset 0 0 0 2px var(--color-brand);
   opacity: 0.7;
 }
 
@@ -147,7 +148,7 @@
   .flexlayout__tab_button--selected {
   border-top: none;
   border-bottom: 2px solid var(--color-brand);
-  border-radius: 8px 8px 0 0;
+  border-radius: 6px 6px 0 0;
 }
 
 /* Bottom tab container — same logic inverted */
@@ -159,12 +160,28 @@
   .flexlayout__tab_button--selected {
   border-bottom: none;
   border-top: 2px solid var(--color-brand);
-  border-radius: 0 0 8px 8px;
+  border-radius: 0 0 6px 6px;
+}
+
+/* Tab hover states */
+.flexlayout__tab_button {
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.flexlayout__tab_button--selected:hover {
+  background-color: var(--color-ctp-surface1);
+}
+
+.flexlayout__tab_button:not(.flexlayout__tab_button--selected):hover {
+  background-color: color-mix(in srgb, var(--color-ctp-surface0) 30%, transparent);
+  opacity: 1;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
 }
 
 /* Inactive tabs — subtle transparency */
 .flexlayout__tab_button:not(.flexlayout__tab_button--selected) {
-  opacity: 0.8;
+  opacity: 0.6;
 }
 
 /* Rounded splitter hover for a polished look */
@@ -177,8 +194,31 @@
    makes the strip ~26-28px; without tabs the toolbar alone is only ~16px.
    min-height ensures panes align regardless of tab count. */
 .flexlayout__tabset_tabbar_outer {
-  min-height: 38px;
+  min-height: 44px;
   align-items: center;
+  padding-top: 5px;
+}
+
+/* Reduce left padding so tabs align closer to the left edge,
+   matching the top spacing of the tab strip */
+.flexlayout__tabset_tabbar_outer_top,
+.flexlayout__tabset_tabbar_outer_bottom {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Subtle divider between tab strip and content */
+.flexlayout__tabset_tabbar_outer_top {
+  border-bottom: 1px solid var(--color-ctp-surface0);
+}
+
+.flexlayout__tabset_tabbar_outer_bottom {
+  border-top: 1px solid var(--color-ctp-surface0);
+}
+
+/* Spacing accounts for border-radius so tabs don't clip the rounded corners */
+.flexlayout__tabset_tabbar_inner_tab_container {
+  padding-left: 6px;
 }
 
 /* Tab button icon and content alignment — leading and trailing must NOT
@@ -192,6 +232,17 @@
 
 .flexlayout__tab_button_trailing {
   flex-shrink: 0;
+  padding: 4px !important;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flexlayout__tab_button_trailing img {
+  width: 12px !important;
+  height: 12px !important;
+  display: block;
 }
 
 .flexlayout__tab_button_content {
@@ -200,7 +251,24 @@
   min-width: 0;
 }
 
-/* Tabset toolbar buttons (maximize, close, custom) — fixed size at narrow widths */
-.flexlayout__tab_toolbar_button {
+/* Tabset toolbar — more right padding and consistent button sizing */
+.flexlayout__tab_toolbar {
+  padding-right: 10px;
+  gap: 2px;
+}
+
+/* Uniform toolbar button sizing — consistent click target and icon size */
+.flexlayout__tab_toolbar_button,
+.flexlayout__tab_toolbar_icon {
   flex-shrink: 0;
+  padding: 4px !important;
+  border-radius: 4px;
+  box-sizing: content-box;
+}
+
+.flexlayout__tab_toolbar_button img,
+.flexlayout__tab_toolbar_icon img {
+  width: 12px !important;
+  height: 12px !important;
+  display: block;
 }

@@ -779,7 +779,7 @@ function App({
                 onOpenProject={() => useFileTreeStore.getState().openProject()}
               />
             </div>
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-ctp-surface0 bg-ctp-base">
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-ctp-mantle">
             {hasProject ? (
               sessionRestoreDone ? <TilingLayout /> : null
             ) : tilingTabCount > 0 ? (
