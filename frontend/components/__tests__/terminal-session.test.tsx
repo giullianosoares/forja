@@ -22,6 +22,7 @@ let capturedKeyHandler: ((event: KeyboardEvent) => boolean) | undefined;
 
 const terminalInstances: Array<{ options: Record<string, unknown> }> = [];
 
+const mockRefresh = vi.fn();
 vi.mock("@xterm/xterm", () => ({
   Terminal: class MockTerminal {
     open = mockOpen;
@@ -31,6 +32,7 @@ vi.mock("@xterm/xterm", () => ({
     loadAddon = mockLoadAddon;
     focus = mockFocus;
     getSelection = mockGetSelection;
+    refresh = mockRefresh;
     attachCustomKeyEventHandler = vi.fn(
       (handler: (event: KeyboardEvent) => boolean) => {
         capturedKeyHandler = handler;
@@ -151,6 +153,7 @@ describe("TerminalSession", () => {
     });
     mockLoadAddon.mockClear();
     mockFocus.mockClear();
+    mockRefresh.mockClear();
     mockPtyWrite.mockClear();
     mockPtySpawn.mockClear().mockImplementation(() => Promise.resolve("mock-tab"));
     mockResize.mockClear();
@@ -720,9 +723,11 @@ describe("TerminalSession", () => {
         onData: vi.fn().mockReturnValue({ dispose: vi.fn() }),
         loadAddon: vi.fn(),
         focus: vi.fn(),
+        refresh: vi.fn(),
         getSelection: vi.fn().mockReturnValue(""),
         attachCustomKeyEventHandler: vi.fn(),
         options: {},
+        rows: 24,
       };
       const mockFitAddonCached = {
         fit: vi.fn(),
@@ -943,6 +948,64 @@ describe("TerminalSession", () => {
 
       // Should spawn since tab is still running
       expect(mockPtySpawn).toHaveBeenCalled();
+    });
+  });
+
+  describe("AI CLI cursor hiding (DECTCEM)", () => {
+    it("writes hide-cursor escape sequence after spawn for AI CLI sessions", async () => {
+      mockStoreTabs.push({ id: "tab-cursor", sessionType: "claude", isRunning: true });
+      mockCacheGet.mockReturnValue(undefined);
+      mockInvoke.mockImplementation((channel: string) => {
+        if (channel === "pty:has-session") return Promise.resolve(false);
+        if (channel === "pty:load-persisted-buffer") return Promise.resolve(null);
+        return Promise.resolve(undefined);
+      });
+
+      render(<TerminalSession tabId="tab-cursor" path="/test" isVisible={true} sessionType="claude" />);
+
+      await vi.runAllTimersAsync();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Should write DECTCEM hide cursor to xterm.js terminal
+      expect(mockWrite).toHaveBeenCalledWith("\x1b[?25l");
+    });
+
+    it("does NOT write hide-cursor for plain terminal sessions", async () => {
+      mockStoreTabs.push({ id: "tab-term-cursor", sessionType: "terminal", isRunning: true });
+      mockCacheGet.mockReturnValue(undefined);
+      mockInvoke.mockImplementation((channel: string) => {
+        if (channel === "pty:has-session") return Promise.resolve(false);
+        if (channel === "pty:load-persisted-buffer") return Promise.resolve(null);
+        return Promise.resolve(undefined);
+      });
+
+      render(<TerminalSession tabId="tab-term-cursor" path="/test" isVisible={true} sessionType="terminal" />);
+
+      await vi.runAllTimersAsync();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Should NOT write hide-cursor for plain terminal
+      expect(mockWrite).not.toHaveBeenCalledWith("\x1b[?25l");
+    });
+
+    it("writes hide-cursor for gemini sessions too", async () => {
+      mockStoreTabs.push({ id: "tab-gemini-cursor", sessionType: "gemini", isRunning: true });
+      mockCacheGet.mockReturnValue(undefined);
+      mockInvoke.mockImplementation((channel: string) => {
+        if (channel === "pty:has-session") return Promise.resolve(false);
+        if (channel === "pty:load-persisted-buffer") return Promise.resolve(null);
+        return Promise.resolve(undefined);
+      });
+
+      render(<TerminalSession tabId="tab-gemini-cursor" path="/test" isVisible={true} sessionType="gemini" />);
+
+      await vi.runAllTimersAsync();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockWrite).toHaveBeenCalledWith("\x1b[?25l");
     });
   });
 
