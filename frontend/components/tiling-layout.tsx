@@ -190,6 +190,14 @@ export function TilingLayout() {
     ) => {
       // Check which block types exist in this tabset
       const children = node.getChildren() ?? [];
+
+      // Hide maximize button for empty tabsets
+      if (children.length === 0) {
+        renderValues.buttons = [];
+        renderValues.stickyButtons = [];
+        return;
+      }
+
       const hasFileTree = children.some(
         (child) => (child as TabNode).getComponent?.() === "file-tree",
       );
@@ -201,7 +209,7 @@ export function TilingLayout() {
             type="button"
             title="Refresh file tree"
             aria-label="Refresh file tree"
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ctp-overlay1 transition-colors hover:bg-ctp-surface0 hover:text-ctp-text"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-ctp-overlay1 transition-colors hover:bg-ctp-surface0 hover:text-ctp-text"
             onMouseDown={(e) => {
               e.stopPropagation();
             }}
@@ -217,7 +225,7 @@ export function TilingLayout() {
             type="button"
             title="Collapse all folders"
             aria-label="Collapse all folders"
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ctp-overlay1 transition-colors hover:bg-ctp-surface0 hover:text-ctp-text"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-ctp-overlay1 transition-colors hover:bg-ctp-surface0 hover:text-ctp-text"
             onMouseDown={(e) => {
               e.stopPropagation();
             }}
