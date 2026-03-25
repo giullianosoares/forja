@@ -1,6 +1,7 @@
 import { memo, useCallback, useRef, useState, useEffect } from "react";
 import { ChevronRight, Pencil, Trash2, FolderMinus } from "lucide-react";
 import { FileIcon } from "./file-icon";
+import { cn } from "@/lib/utils";
 import { useFileTreeStore, type FileNode } from "@/stores/file-tree";
 import { useFilePreviewStore } from "@/stores/file-preview";
 import { useGitStatusStore } from "@/stores/git-status";
@@ -38,6 +39,7 @@ export const FileTreeNode = memo(function FileTreeNode({
 }: FileTreeNodeProps) {
   const expanded = useFileTreeStore((s) => !!s.expandedPaths[node.path]);
   const isFocused = useFileTreeStore((s) => s.focusedPath === node.path);
+  const isSelected = useFileTreeStore((s) => !!s.selectedPaths[node.path]);
   const toggleExpanded = useFileTreeStore((s) => s.toggleExpanded);
   const selectFile = useFileTreeStore((s) => s.selectFile);
   const pinFile = useFileTreeStore((s) => s.pinFile);
@@ -215,13 +217,13 @@ export const FileTreeNode = memo(function FileTreeNode({
   const nodeButton = (
     <button
       type="button"
-      className={`flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors duration-100 hover:bg-ctp-surface0 group ${
-        ignoredOpacity
-      } ${
-        isActive ? "bg-ctp-surface0" : ""
-      } ${
-        isFocused ? "ring-1 ring-ctp-mauve/60 bg-ctp-surface0/50" : ""
-      }`}
+      className={cn(
+        "flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors duration-100 hover:bg-ctp-surface0 group",
+        ignoredOpacity,
+        isActive && "bg-ctp-surface0",
+        isFocused && "ring-1 ring-ctp-mauve/60 bg-ctp-surface0/50",
+        isSelected && "bg-ctp-surface0/50",
+      )}
       style={{ paddingLeft: `${depth * 12 + 8}px` }}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}

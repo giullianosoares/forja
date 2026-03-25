@@ -242,4 +242,40 @@ describe("FileTreeNode", () => {
 
     expect(screen.getByRole("button")).toHaveClass("opacity-50");
   });
+
+  it("should apply selection highlight when node path is in selectedPaths", () => {
+    const fileNode: FileNode = {
+      name: "selected.ts",
+      path: "/project/selected.ts",
+      isDir: false,
+      extension: "ts",
+    };
+
+    useFileTreeStore.setState({
+      selectedPaths: { "/project/selected.ts": true },
+    });
+
+    render(<FileTreeNode node={fileNode} depth={0} />);
+
+    expect(screen.getByRole("button")).toHaveClass("bg-ctp-surface0/50");
+  });
+
+  it("should not apply selection highlight when node path is not in selectedPaths", () => {
+    const fileNode: FileNode = {
+      name: "unselected.ts",
+      path: "/project/unselected.ts",
+      isDir: false,
+      extension: "ts",
+    };
+
+    useFileTreeStore.setState({
+      selectedPaths: {},
+    });
+
+    render(<FileTreeNode node={fileNode} depth={0} />);
+
+    const button = screen.getByRole("button");
+    // The active highlight bg-ctp-surface0 might be present, but not the selection variant
+    expect(button).not.toHaveClass("bg-ctp-surface0/50");
+  });
 });
