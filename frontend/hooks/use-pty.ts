@@ -20,6 +20,19 @@ interface UsePtyOptions {
 }
 
 /**
+ * Persists the current project UI state to disk after a session ID is detected.
+ * This ensures the cliSessionId is available for resume on next app launch.
+ */
+async function persistSessionIdToDisk(projectPath: string): Promise<void> {
+  try {
+    const { saveCurrentProjectToDisk } = await import("@/stores/projects");
+    await saveCurrentProjectToDisk(projectPath);
+  } catch {
+    // Non-fatal: session will still work, just won't persist for resume
+  }
+}
+
+/**
  * Polls the filesystem to detect a new CLI session ID that appeared after spawn.
  * Compares against a set of known session IDs to find the newly created one.
  */
@@ -80,6 +93,7 @@ export function usePty(options: UsePtyOptions) {
             if (match?.[1]) {
               sessionIdFound = true;
               useTerminalTabsStore.getState().setCliSessionId(tabId, match[1]);
+              persistSessionIdToDisk(tab.path);
             }
           }
         }
@@ -132,6 +146,7 @@ export function usePty(options: UsePtyOptions) {
       detectSessionFromFilesystem(path, knownSessionIds).then((newSessionId) => {
         if (newSessionId) {
           useTerminalTabsStore.getState().setCliSessionId(tabId, newSessionId);
+          persistSessionIdToDisk(path);
         }
       });
     }
