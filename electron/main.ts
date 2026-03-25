@@ -33,6 +33,7 @@ const __dirname = path.dirname(__filename);
 import { resolveShellPath, spawnPty, writePty, resizePty, closePty, closeAllPtysForWindow, getSessionBuffer, hasPty, getAllSessionBuffers } from "./pty.js";
 import { isUiSaveSuspended, suspendUiSaves, resumeUiSaves } from "./ui-save-gate.js";
 import { attachWebviewKeyboardBridge } from "./webview-keyboard-bridge.js";
+import { getClaudeSessions } from "./cli-sessions.js";
 
 // Type-only imports for signatures
 import type { UiPreferences, ProjectUiState, WorkspaceProject } from "./config.js";
@@ -504,7 +505,6 @@ ipcMain.handle("save_project_ui_state", async (_event, args: { workspaceId: stri
 
 // CLI session discovery (reads Claude Code's session data)
 ipcMain.handle("get_cli_sessions", (_event, args: { projectPath: string; limit?: number }) => {
-  const { getClaudeSessions } = require("./cli-sessions.js") as typeof import("./cli-sessions.js");
   return getClaudeSessions(args.projectPath, args.limit);
 });
 
