@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useFileTreeStore } from "@/stores/file-tree";
+import { useFileTreeStore, findNode } from "@/stores/file-tree";
 import { flattenVisibleNodes, type FlatNode } from "@/components/file-tree-sidebar";
 
 export function handleFileTreeKeyDown(e: React.KeyboardEvent): void {
@@ -22,6 +22,38 @@ export function handleFileTreeKeyDown(e: React.KeyboardEvent): void {
     : -1;
 
   const currentNode = currentIndex >= 0 ? flatNodes[currentIndex] : null;
+
+  // Cmd/Ctrl+C — copy to clipboard
+  const mod = e.metaKey || e.ctrlKey;
+  const key = e.key.toLowerCase();
+
+  if (mod && key === "c") {
+    e.preventDefault();
+    useFileTreeStore.getState().copyToClipboard();
+    return;
+  }
+
+  // Cmd/Ctrl+X — cut to clipboard
+  if (mod && key === "x") {
+    e.preventDefault();
+    useFileTreeStore.getState().cutToClipboard();
+    return;
+  }
+
+  // Cmd/Ctrl+V — paste from clipboard
+  if (mod && key === "v") {
+    e.preventDefault();
+    const store = useFileTreeStore.getState();
+    const focused = store.focusedPath;
+    if (focused) {
+      const node = store.tree ? findNode(store.tree.root, focused) : null;
+      const targetDir = node?.isDir
+        ? focused
+        : focused.substring(0, focused.lastIndexOf("/"));
+      store.pasteFromClipboard(targetDir);
+    }
+    return;
+  }
 
   // Space — toggle selection of focused item
   if (e.key === " ") {

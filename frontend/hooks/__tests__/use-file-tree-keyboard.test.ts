@@ -36,11 +36,14 @@ function makeTree(): FileNode {
 function fireKey(
   handler: (e: React.KeyboardEvent) => void,
   key: string,
+  opts?: { metaKey?: boolean; ctrlKey?: boolean },
 ) {
   const prevented = { value: false };
   const stopped = { value: false };
   handler({
     key,
+    metaKey: opts?.metaKey ?? false,
+    ctrlKey: opts?.ctrlKey ?? false,
     preventDefault: () => { prevented.value = true; },
     stopPropagation: () => { stopped.value = true; },
   } as unknown as React.KeyboardEvent);
@@ -296,6 +299,138 @@ describe("useFileTreeKeyboard", () => {
       const { prevented, stopped } = fireKey(handler, "a");
       expect(prevented).toBe(false);
       expect(stopped).toBe(false);
+    });
+  });
+
+  describe("Cmd/Ctrl+C — copy", () => {
+    it("should copy focused path to clipboard when no selection", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "c", { metaKey: true });
+      const state = useFileTreeStore.getState();
+      expect(state.clipboard).toEqual({
+        paths: ["/project/README.md"],
+        operation: "copy",
+      });
+    });
+
+    it("should copy selected paths to clipboard", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      useFileTreeStore.setState({
+        selectedPaths: {
+          "/project/src": true,
+          "/project/README.md": true,
+        },
+      });
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "c", { metaKey: true });
+      const state = useFileTreeStore.getState();
+      expect(state.clipboard?.operation).toBe("copy");
+      expect(state.clipboard?.paths).toContain("/project/src");
+      expect(state.clipboard?.paths).toContain("/project/README.md");
+    });
+
+    it("should call preventDefault", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      const handler = handleFileTreeKeyDown;
+      const { prevented } = fireKey(handler, "c", { metaKey: true });
+      expect(prevented).toBe(true);
+    });
+
+    it("should also work with ctrlKey", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "c", { ctrlKey: true });
+      expect(useFileTreeStore.getState().clipboard?.operation).toBe("copy");
+    });
+  });
+
+  describe("Cmd/Ctrl+X — cut", () => {
+    it("should cut focused path to clipboard when no selection", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "x", { metaKey: true });
+      const state = useFileTreeStore.getState();
+      expect(state.clipboard).toEqual({
+        paths: ["/project/README.md"],
+        operation: "cut",
+      });
+    });
+
+    it("should cut selected paths to clipboard", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      useFileTreeStore.setState({
+        selectedPaths: { "/project/src": true },
+      });
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "x", { metaKey: true });
+      const state = useFileTreeStore.getState();
+      expect(state.clipboard?.operation).toBe("cut");
+      expect(state.clipboard?.paths).toEqual(["/project/src"]);
+    });
+
+    it("should call preventDefault", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      const handler = handleFileTreeKeyDown;
+      const { prevented } = fireKey(handler, "x", { metaKey: true });
+      expect(prevented).toBe(true);
+    });
+  });
+
+  describe("Cmd/Ctrl+V — paste", () => {
+    it("should call pasteFromClipboard with parent dir when focused on a file", async () => {
+      const { invoke } = await import("@/lib/ipc");
+      vi.mocked(invoke).mockResolvedValue(undefined);
+
+      setupStore({ focusedPath: "/project/README.md" });
+      useFileTreeStore.setState({
+        clipboard: { paths: ["/project/src/index.ts"], operation: "copy" },
+        currentPath: "/project",
+      });
+
+      const pasteSpy = vi.spyOn(useFileTreeStore.getState(), "pasteFromClipboard");
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "v", { metaKey: true });
+
+      expect(pasteSpy).toHaveBeenCalledWith("/project");
+    });
+
+    it("should call pasteFromClipboard with the dir itself when focused on a directory", async () => {
+      const { invoke } = await import("@/lib/ipc");
+      vi.mocked(invoke).mockResolvedValue(undefined);
+
+      setupStore({ focusedPath: "/project/src" });
+      useFileTreeStore.setState({
+        clipboard: { paths: ["/project/README.md"], operation: "copy" },
+        currentPath: "/project",
+      });
+
+      const pasteSpy = vi.spyOn(useFileTreeStore.getState(), "pasteFromClipboard");
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "v", { metaKey: true });
+
+      expect(pasteSpy).toHaveBeenCalledWith("/project/src");
+    });
+
+    it("should call preventDefault", () => {
+      setupStore({ focusedPath: "/project/README.md" });
+      useFileTreeStore.setState({
+        clipboard: { paths: ["/project/src/index.ts"], operation: "copy" },
+      });
+      const handler = handleFileTreeKeyDown;
+      const { prevented } = fireKey(handler, "v", { metaKey: true });
+      expect(prevented).toBe(true);
+    });
+
+    it("should do nothing when no focused path", () => {
+      setupStore();
+      useFileTreeStore.setState({
+        clipboard: { paths: ["/project/src/index.ts"], operation: "copy" },
+      });
+      const pasteSpy = vi.spyOn(useFileTreeStore.getState(), "pasteFromClipboard");
+      const handler = handleFileTreeKeyDown;
+      fireKey(handler, "v", { metaKey: true });
+      expect(pasteSpy).not.toHaveBeenCalled();
     });
   });
 });

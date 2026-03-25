@@ -87,6 +87,7 @@ interface FileTreeState {
   focusedPath: string | null;
   selectedPaths: Record<string, boolean>;
   renamingPath: string | null;
+  clipboard: { paths: string[]; operation: "copy" | "cut" } | null;
 
   toggleSidebar: () => void;
   setFocusedPath: (path: string | null) => void;
@@ -109,6 +110,9 @@ interface FileTreeState {
   stopRename: () => void;
   saveSidebarStateForProject: (projectPath: string) => void;
   restoreSidebarStateForProject: (projectPath: string) => void;
+  copyToClipboard: () => void;
+  cutToClipboard: () => void;
+  pasteFromClipboard: (targetDir: string) => Promise<void>;
 }
 
 export const useFileTreeStore = create<FileTreeState>((set, get) => {
@@ -146,6 +150,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => {
     focusedPath: null,
     selectedPaths: {},
     renamingPath: null,
+    clipboard: null,
 
     toggleSidebar: () => set((state) => ({ isOpen: !state.isOpen })),
     setFocusedPath: (path) => set({ focusedPath: path }),
@@ -402,6 +407,50 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => {
       if (saved !== undefined) {
         set({ isOpen: saved });
       }
+    },
+
+    copyToClipboard: () => {
+      const { selectedPaths, focusedPath } = get();
+      const paths = Object.keys(selectedPaths).filter((p) => selectedPaths[p]);
+      if (paths.length === 0 && focusedPath) paths.push(focusedPath);
+      if (paths.length > 0) {
+        set({ clipboard: { paths, operation: "copy" } });
+      }
+    },
+
+    cutToClipboard: () => {
+      const { selectedPaths, focusedPath } = get();
+      const paths = Object.keys(selectedPaths).filter((p) => selectedPaths[p]);
+      if (paths.length === 0 && focusedPath) paths.push(focusedPath);
+      if (paths.length > 0) {
+        set({ clipboard: { paths, operation: "cut" } });
+      }
+    },
+
+    pasteFromClipboard: async (targetDir: string) => {
+      const { clipboard, currentPath } = get();
+      if (!clipboard || !currentPath) return;
+
+      for (const sourcePath of clipboard.paths) {
+        if (clipboard.operation === "copy") {
+          await invoke("copy_file_or_dir", {
+            projectPath: currentPath,
+            sourcePath,
+            targetDir,
+          });
+        } else {
+          await invoke("move_file_or_dir", {
+            projectPath: currentPath,
+            sourcePath,
+            targetDir,
+          });
+        }
+      }
+
+      if (clipboard.operation === "cut") {
+        set({ clipboard: null, selectedPaths: {} });
+      }
+      get().refreshTree();
     },
   };
 });
