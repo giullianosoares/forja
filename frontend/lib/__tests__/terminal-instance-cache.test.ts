@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+let rafCallbacks: Array<() => void> = [];
+
 vi.mock("@/lib/pty-dispatcher", () => ({
   ptyDispatcher: {
     registerData: vi.fn(),
@@ -43,6 +45,16 @@ describe("terminalCache", () => {
     terminalCache.clear();
     vi.clearAllMocks();
     mockInvoke.mockResolvedValue(undefined);
+    rafCallbacks = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: () => void) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("has() returns false for unknown tabId", () => {
@@ -148,6 +160,9 @@ describe("terminalCache", () => {
     // Get the registered data handler and invoke it
     const dataHandler = vi.mocked(ptyDispatcher.registerData).mock.calls[0][1];
     dataHandler("hello world");
+
+    // Data is now RAF-coalesced — fire the RAF callback to flush
+    rafCallbacks[0]();
 
     expect(terminal.write).toHaveBeenCalledWith("hello world");
   });
