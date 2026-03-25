@@ -110,7 +110,16 @@ export const useFilePreviewStore = create<FilePreviewState>((set, get) => ({
 
   loadFile: async (path: string, options?: { pin?: boolean }) => {
     const pin = options?.pin ?? false;
-    set({ isLoading: true, currentFile: path, error: null, isEditing: false, editContent: null, editDirty: false, isPinned: pin });
+    set({
+      isLoading: true,
+      currentFile: path,
+      error: null,
+      isEditing: false,
+      editContent: null,
+      editDirty: false,
+      isPinned: pin,
+      previewTabId: pin ? null : "block-file-preview",
+    });
 
     // Ensure a file-preview block exists in the tiling layout
     const tiling = useTilingLayoutStore.getState();

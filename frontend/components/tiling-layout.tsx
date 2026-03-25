@@ -110,6 +110,10 @@ export function TilingLayout() {
   // Subscribe to session state changes to trigger re-renders for tab dots
   const sessionStates = useSessionStateStore((s) => s.states);
 
+  // Subscribe to file-preview state for italic tab rendering
+  const isPinned = useFilePreviewStore((s) => s.isPinned);
+  const previewTabId = useFilePreviewStore((s) => s.previewTabId);
+
   const handleAction = useCallback((action: Action) => {
     // Sync store state when flexlayout closes a tab via its own UI
     if (action.type === Actions.DELETE_TAB) {
@@ -144,6 +148,12 @@ export function TilingLayout() {
             editContent: null,
             editDirty: false,
           });
+        }
+
+        // Clear previewTabId if the deleted tab was the preview tab
+        const previewStore = useFilePreviewStore.getState();
+        if (nodeId === previewStore.previewTabId) {
+          previewStore.clearPreviewTab();
         }
 
         // If it's the agent-chat block, sync the agent-chat store
@@ -289,17 +299,20 @@ export function TilingLayout() {
         }
       };
 
+      // For file-preview tabs in preview (unpinned) mode, show italic content
+      const isPreviewTab = component === "file-preview" && !isPinned && nodeId === previewTabId;
+
       renderValues.content = (
         <span
           data-tab-node-id={isRenamable ? nodeId : undefined}
-          className="truncate text-app-sm"
+          className={`truncate text-app-sm${isPreviewTab ? " italic opacity-80" : ""}`}
           onDoubleClick={handleDoubleClick}
         >
           {node.getName()}
         </span>
       );
     },
-    [sessionStates],
+    [sessionStates, isPinned, previewTabId],
   );
 
   const onContextMenu = useCallback(

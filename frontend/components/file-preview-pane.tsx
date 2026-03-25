@@ -168,6 +168,13 @@ function FilePreviewPaneContent() {
       .catch(() => setFileGitStatus(null));
   }, [currentFile]);
 
+  // Auto-pin when the user starts editing (dirty state means they made changes)
+  useEffect(() => {
+    if (editDirty) {
+      useFilePreviewStore.getState().pinFile();
+    }
+  }, [editDirty]);
+
   if (!isOpen) {
     return null;
   }
