@@ -21,11 +21,16 @@ interface FilePreviewState {
   editContent: string | null;
   editDirty: boolean;
   previewByProject: Record<string, { currentFile: string; content: FileContent | null } | null>;
+  isPinned: boolean;
+  previewTabId: string | null;
 
   togglePreview: () => void;
   openPreview: () => void;
   closePreview: () => void;
-  loadFile: (path: string) => Promise<void>;
+  loadFile: (path: string, options?: { pin?: boolean }) => Promise<void>;
+  loadFilePreview: (path: string) => Promise<void>;
+  pinFile: () => void;
+  clearPreviewTab: () => void;
   reloadCurrentFile: () => Promise<void>;
   reloadCurrentFileForProject: (projectPath: string) => Promise<void>;
   reloadCurrentFileIfChanged: (projectPath: string, changedPaths: string[]) => Promise<void>;
@@ -47,6 +52,8 @@ export const useFilePreviewStore = create<FilePreviewState>((set, get) => ({
   editContent: null,
   editDirty: false,
   previewByProject: {},
+  isPinned: false,
+  previewTabId: null,
 
   togglePreview: () => {
     const { isOpen } = get();
@@ -101,8 +108,9 @@ export const useFilePreviewStore = create<FilePreviewState>((set, get) => ({
     });
   },
 
-  loadFile: async (path: string) => {
-    set({ isLoading: true, currentFile: path, error: null, isEditing: false, editContent: null, editDirty: false });
+  loadFile: async (path: string, options?: { pin?: boolean }) => {
+    const pin = options?.pin ?? false;
+    set({ isLoading: true, currentFile: path, error: null, isEditing: false, editContent: null, editDirty: false, isPinned: pin });
 
     // Ensure a file-preview block exists in the tiling layout
     const tiling = useTilingLayoutStore.getState();
@@ -154,6 +162,18 @@ export const useFilePreviewStore = create<FilePreviewState>((set, get) => ({
         error: errorMessage,
       });
     }
+  },
+
+  loadFilePreview: async (path: string) => {
+    await get().loadFile(path, { pin: false });
+  },
+
+  pinFile: () => {
+    set({ isPinned: true });
+  },
+
+  clearPreviewTab: () => {
+    set({ previewTabId: null, isPinned: false });
   },
 
   reloadCurrentFile: async () => {

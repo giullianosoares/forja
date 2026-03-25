@@ -582,6 +582,122 @@ describe("useFilePreviewStore", () => {
     });
   });
 
+  describe("preview mode state (isPinned / previewTabId)", () => {
+    it("has default values of isPinned=false and previewTabId=null", () => {
+      useFilePreviewStore.setState({ isPinned: false, previewTabId: null });
+      const state = useFilePreviewStore.getState();
+      expect(state.isPinned).toBe(false);
+      expect(state.previewTabId).toBeNull();
+    });
+
+    describe("pinFile", () => {
+      it("sets isPinned to true", () => {
+        useFilePreviewStore.setState({ isPinned: false });
+        useFilePreviewStore.getState().pinFile();
+        expect(useFilePreviewStore.getState().isPinned).toBe(true);
+      });
+
+      it("does not change previewTabId", () => {
+        useFilePreviewStore.setState({ isPinned: false, previewTabId: "tab-123" });
+        useFilePreviewStore.getState().pinFile();
+        expect(useFilePreviewStore.getState().previewTabId).toBe("tab-123");
+      });
+    });
+
+    describe("clearPreviewTab", () => {
+      it("resets previewTabId to null", () => {
+        useFilePreviewStore.setState({ previewTabId: "tab-abc" });
+        useFilePreviewStore.getState().clearPreviewTab();
+        expect(useFilePreviewStore.getState().previewTabId).toBeNull();
+      });
+
+      it("resets isPinned to false", () => {
+        useFilePreviewStore.setState({ isPinned: true });
+        useFilePreviewStore.getState().clearPreviewTab();
+        expect(useFilePreviewStore.getState().isPinned).toBe(false);
+      });
+    });
+
+    describe("loadFile with pin option", () => {
+      it("sets isPinned=true when called with { pin: true }", async () => {
+        const { invoke } = await import("@/lib/ipc");
+        vi.mocked(invoke).mockResolvedValue({
+          path: "/test/file.ts",
+          content: "content",
+          size: 7,
+        });
+        mockHasBlock.mockReturnValue(true);
+
+        await useFilePreviewStore.getState().loadFile("/test/file.ts", { pin: true });
+
+        expect(useFilePreviewStore.getState().isPinned).toBe(true);
+      });
+
+      it("sets isPinned=false when called with { pin: false }", async () => {
+        const { invoke } = await import("@/lib/ipc");
+        vi.mocked(invoke).mockResolvedValue({
+          path: "/test/file.ts",
+          content: "content",
+          size: 7,
+        });
+        mockHasBlock.mockReturnValue(true);
+
+        await useFilePreviewStore.getState().loadFile("/test/file.ts", { pin: false });
+
+        expect(useFilePreviewStore.getState().isPinned).toBe(false);
+      });
+
+      it("defaults to isPinned=false when no options are passed", async () => {
+        const { invoke } = await import("@/lib/ipc");
+        vi.mocked(invoke).mockResolvedValue({
+          path: "/test/file.ts",
+          content: "content",
+          size: 7,
+        });
+        mockHasBlock.mockReturnValue(true);
+
+        await useFilePreviewStore.getState().loadFile("/test/file.ts");
+
+        expect(useFilePreviewStore.getState().isPinned).toBe(false);
+      });
+    });
+
+    describe("loadFilePreview", () => {
+      it("loads a file in preview mode (isPinned=false)", async () => {
+        const { invoke } = await import("@/lib/ipc");
+        vi.mocked(invoke).mockResolvedValue({
+          path: "/test/preview.ts",
+          content: "preview content",
+          size: 15,
+        });
+        mockHasBlock.mockReturnValue(true);
+
+        await useFilePreviewStore.getState().loadFilePreview("/test/preview.ts");
+
+        const state = useFilePreviewStore.getState();
+        expect(state.currentFile).toBe("/test/preview.ts");
+        expect(state.isPinned).toBe(false);
+        expect(state.isLoading).toBe(false);
+        expect(state.isOpen).toBe(true);
+      });
+
+      it("does not pin the file", async () => {
+        const { invoke } = await import("@/lib/ipc");
+        vi.mocked(invoke).mockResolvedValue({
+          path: "/test/file.ts",
+          content: "x",
+          size: 1,
+        });
+        useFilePreviewStore.setState({ isPinned: true });
+        mockHasBlock.mockReturnValue(true);
+
+        await useFilePreviewStore.getState().loadFilePreview("/test/file.ts");
+
+        expect(useFilePreviewStore.getState().isPinned).toBe(false);
+      });
+    });
+  });
+
   describe("restorePreviewForProject", () => {
     it("restores saved preview state for a project", () => {
       useFilePreviewStore.setState({
