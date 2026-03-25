@@ -54,6 +54,9 @@ describe("plugin-preload", () => {
         sidebar: expect.objectContaining({
           setBadge: expect.any(Function),
         }),
+        editor: expect.objectContaining({
+          open: expect.any(Function),
+        }),
         on: expect.any(Function),
       })
     );
@@ -261,6 +264,47 @@ describe("plugin-preload", () => {
         id: expect.any(Number),
         method: "sidebar.setBadge",
         args: { text: "12:30" },
+      })
+    );
+  });
+
+  it("sends editor.open request via sendToHost", async () => {
+    const { contextBridge } = await import("electron");
+    await import("../plugins/plugin-preload-impl.js");
+
+    const exposedApi = vi.mocked(contextBridge.exposeInMainWorld).mock
+      .calls[0][1] as {
+      editor: { open: (path: string, options?: { preview?: boolean }) => Promise<unknown> };
+    };
+
+    void exposedApi.editor.open("src/index.ts", { preview: true });
+
+    expect(mockSendToHost).toHaveBeenCalledWith(
+      "plugin:request",
+      expect.objectContaining({
+        id: expect.any(Number),
+        method: "editor.open",
+        args: { path: "src/index.ts", preview: true },
+      })
+    );
+  });
+
+  it("sends editor.open request with defaults when no options given", async () => {
+    const { contextBridge } = await import("electron");
+    await import("../plugins/plugin-preload-impl.js");
+
+    const exposedApi = vi.mocked(contextBridge.exposeInMainWorld).mock
+      .calls[0][1] as {
+      editor: { open: (path: string, options?: { preview?: boolean }) => Promise<unknown> };
+    };
+
+    void exposedApi.editor.open("README.md");
+
+    expect(mockSendToHost).toHaveBeenCalledWith(
+      "plugin:request",
+      expect.objectContaining({
+        method: "editor.open",
+        args: { path: "README.md" },
       })
     );
   });

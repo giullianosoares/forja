@@ -99,6 +99,22 @@ vi.mock("@/stores/plugins", () => ({
   ),
 }));
 
+const mockLoadFile = vi.fn().mockResolvedValue(undefined);
+
+vi.mock("@/stores/file-preview", () => ({
+  useFilePreviewStore: Object.assign(
+    (selector?: (s: unknown) => unknown) => {
+      const state = { loadFile: mockLoadFile };
+      return selector ? selector(state) : state;
+    },
+    {
+      getState: () => ({ loadFile: mockLoadFile }),
+      setState: vi.fn(),
+      subscribe: vi.fn(() => () => {}),
+    }
+  ),
+}));
+
 // Patch document.createElement so jsdom returns a div with webview API when "webview" is requested
 const originalCreateElement = document.createElement.bind(document);
 document.createElement = ((tagName: string, options?: ElementCreationOptions) => {
@@ -431,6 +447,130 @@ describe("PluginHost", () => {
               id: "catppuccin-mocha",
               colors: expect.objectContaining({ base: "#1e1e2e" }),
             }),
+          })
+        );
+      }
+    } else {
+      expect(document.body).toBeTruthy();
+    }
+  });
+
+  it("intercepts editor.open and calls loadFile on file-preview store without calling plugin:bridge", async () => {
+    render(<PluginHost pluginName="test-plugin" />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const webview = document.querySelector("[data-testid='plugin-webview']") as HTMLElement & {
+      send?: ReturnType<typeof vi.fn>;
+    };
+
+    if (webview) {
+      const ipcEvent = new Event("ipc-message") as Event & { channel: string; args: unknown[] };
+      ipcEvent.channel = "plugin:request";
+      ipcEvent.args = [{ id: 77, method: "editor.open", args: { path: "src/index.ts", preview: true } }];
+
+      await act(async () => {
+        webview.dispatchEvent(ipcEvent);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // Should NOT have called plugin:bridge for editor.open
+      const bridgeCalls = mockInvoke.mock.calls.filter(([ch]: [string]) => ch === "plugin:bridge");
+      expect(bridgeCalls.length).toBe(0);
+
+      // Should have called loadFile on the file-preview store
+      expect(mockLoadFile).toHaveBeenCalledWith("src/index.ts");
+
+      // Should have sent success response back to webview
+      if (webview.send) {
+        expect(webview.send).toHaveBeenCalledWith(
+          "plugin:response",
+          expect.objectContaining({
+            id: 77,
+            success: true,
+            result: { opened: true },
+          })
+        );
+      }
+    } else {
+      expect(document.body).toBeTruthy();
+    }
+  });
+
+  it("intercepts editor.open with relative path by resolving against project path", async () => {
+    // Override the projects store to return a project path
+    let mockProjectPath: string | null = "/home/user/my-project";
+    vi.spyOn(
+      (await import("@/stores/projects")).useProjectsStore,
+      "getState"
+    ).mockReturnValue({
+      activeProjectPath: mockProjectPath,
+    } as ReturnType<typeof import("@/stores/projects").useProjectsStore.getState>);
+
+    render(<PluginHost pluginName="test-plugin" />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const webview = document.querySelector("[data-testid='plugin-webview']") as HTMLElement & {
+      send?: ReturnType<typeof vi.fn>;
+    };
+
+    if (webview) {
+      const ipcEvent = new Event("ipc-message") as Event & { channel: string; args: unknown[] };
+      ipcEvent.channel = "plugin:request";
+      ipcEvent.args = [{ id: 78, method: "editor.open", args: { path: "TASKS.md" } }];
+
+      await act(async () => {
+        webview.dispatchEvent(ipcEvent);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // loadFile should receive the full resolved path
+      expect(mockLoadFile).toHaveBeenCalledWith("/home/user/my-project/TASKS.md");
+    } else {
+      expect(document.body).toBeTruthy();
+    }
+  });
+
+  it("sends error response when editor.open is called without a path", async () => {
+    render(<PluginHost pluginName="test-plugin" />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const webview = document.querySelector("[data-testid='plugin-webview']") as HTMLElement & {
+      send?: ReturnType<typeof vi.fn>;
+    };
+
+    if (webview) {
+      const ipcEvent = new Event("ipc-message") as Event & { channel: string; args: unknown[] };
+      ipcEvent.channel = "plugin:request";
+      ipcEvent.args = [{ id: 79, method: "editor.open", args: {} }];
+
+      await act(async () => {
+        webview.dispatchEvent(ipcEvent);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // Should NOT have called loadFile
+      expect(mockLoadFile).not.toHaveBeenCalled();
+
+      // Should have sent error response
+      if (webview.send) {
+        expect(webview.send).toHaveBeenCalledWith(
+          "plugin:response",
+          expect.objectContaining({
+            id: 79,
+            success: false,
+            error: expect.stringContaining("path"),
           })
         );
       }
