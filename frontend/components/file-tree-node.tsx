@@ -1,5 +1,5 @@
 import { memo, useCallback, useRef, useState, useEffect } from "react";
-import { ChevronRight, Pencil, Trash2, FolderMinus } from "lucide-react";
+import { ChevronRight, Pencil, Trash2, FolderMinus, FilePlus, FolderPlus, Scissors, Copy, Clipboard, Link, FolderOpen } from "lucide-react";
 import { FileIcon } from "./file-icon";
 import { cn } from "@/lib/utils";
 import { useFileTreeStore, type FileNode } from "@/stores/file-tree";
@@ -84,6 +84,14 @@ export const FileTreeNode = memo(function FileTreeNode({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Inline new file/folder creation state
+  const [creatingType, setCreatingType] = useState<"file" | "dir" | null>(null);
+  const [creatingName, setCreatingName] = useState("");
+  const createInputRef = useRef<HTMLInputElement>(null);
+
+  // Clipboard state from store
+  const clipboard = useFileTreeStore((s) => s.clipboard);
+
   // Focus rename input when it appears
   useEffect(() => {
     if (renaming && renameInputRef.current) {
@@ -91,6 +99,13 @@ export const FileTreeNode = memo(function FileTreeNode({
       renameInputRef.current.select();
     }
   }, [renaming]);
+
+  // Focus create input when it appears
+  useEffect(() => {
+    if (creatingType && createInputRef.current) {
+      createInputRef.current.focus();
+    }
+  }, [creatingType]);
 
   const loadSubdirectory = useFileTreeStore((s) => s.loadSubdirectory);
 
@@ -132,6 +147,89 @@ export const FileTreeNode = memo(function FileTreeNode({
     // Double click — pin the file
     pinFile(node.path);
   }, [node.isDir, node.path, pinFile, renaming]);
+
+  const handleCopyPath = useCallback(() => {
+    navigator.clipboard.writeText(node.path);
+  }, [node.path]);
+
+  const handleCopyRelativePath = useCallback(() => {
+    const projectPath = useFileTreeStore.getState().currentPath;
+    const relative = projectPath
+      ? node.path.replace(projectPath + "/", "")
+      : node.path;
+    navigator.clipboard.writeText(relative);
+  }, [node.path]);
+
+  const handleRevealInFinder = useCallback(() => {
+    invoke("reveal_in_finder", { path: node.path });
+  }, [node.path]);
+
+  const handleCut = useCallback(() => {
+    const store = useFileTreeStore.getState();
+    if (!store.selectedPaths[node.path]) {
+      store.clearSelection();
+      store.toggleSelect(node.path);
+    }
+    store.cutToClipboard();
+  }, [node.path]);
+
+  const handleCopy = useCallback(() => {
+    const store = useFileTreeStore.getState();
+    if (!store.selectedPaths[node.path]) {
+      store.clearSelection();
+      store.toggleSelect(node.path);
+    }
+    store.copyToClipboard();
+  }, [node.path]);
+
+  const handlePaste = useCallback(() => {
+    const targetDir = node.isDir
+      ? node.path
+      : node.path.substring(0, node.path.lastIndexOf("/"));
+    useFileTreeStore.getState().pasteFromClipboard(targetDir);
+  }, [node.isDir, node.path]);
+
+  const handleCreateCommit = useCallback(async () => {
+    const trimmed = creatingName.trim();
+    if (!trimmed || !effectiveProjectPath || !creatingType) {
+      setCreatingType(null);
+      setCreatingName("");
+      return;
+    }
+
+    // Target directory: current node if dir, else parent
+    const targetDir = node.isDir
+      ? node.path
+      : node.path.substring(0, node.path.lastIndexOf("/"));
+    const newPath = `${targetDir}/${trimmed}`;
+
+    try {
+      if (creatingType === "file") {
+        await invoke("create_file", { projectPath: effectiveProjectPath, filePath: newPath });
+      } else {
+        await invoke("create_directory", { projectPath: effectiveProjectPath, dirPath: newPath });
+      }
+      await useFileTreeStore.getState().refreshTree(effectiveProjectPath);
+    } catch (err) {
+      console.error(`[file-tree] Create ${creatingType} failed:`, err);
+    } finally {
+      setCreatingType(null);
+      setCreatingName("");
+    }
+  }, [creatingName, creatingType, effectiveProjectPath, node.isDir, node.path]);
+
+  const handleCreateKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleCreateCommit();
+      } else if (e.key === "Escape") {
+        setCreatingType(null);
+        setCreatingName("");
+      }
+    },
+    [handleCreateCommit]
+  );
 
   const handleRenameStart = useCallback(() => {
     setRenameValue(node.name);
@@ -298,7 +396,88 @@ export const FileTreeNode = memo(function FileTreeNode({
         <ContextMenuTrigger asChild>
           {nodeButton}
         </ContextMenuTrigger>
-        <ContextMenuContent className="min-w-44 border-ctp-surface1 bg-overlay-mantle">
+        <ContextMenuContent className="min-w-48 border-ctp-surface1 bg-overlay-mantle">
+          {/* New File / New Folder — directories only */}
+          {node.isDir && (
+            <>
+              <ContextMenuItem
+                className="gap-2 text-app-sm text-ctp-subtext0 focus:bg-ctp-surface0 focus:text-ctp-text"
+                onSelect={() => { setCreatingType("file"); setCreatingName(""); }}
+              >
+                <FilePlus className="h-3.5 w-3.5" strokeWidth={1.5} />
+                New File...
+              </ContextMenuItem>
+              <ContextMenuItem
+                className="gap-2 text-app-sm text-ctp-subtext0 focus:bg-ctp-surface0 focus:text-ctp-text"
+                onSelect={() => { setCreatingType("dir"); setCreatingName(""); }}
+              >
+                <FolderPlus className="h-3.5 w-3.5" strokeWidth={1.5} />
+                New Folder...
+              </ContextMenuItem>
+              <ContextMenuSeparator className="bg-ctp-surface0" />
+            </>
+          )}
+
+          {/* Cut / Copy / Paste */}
+          <ContextMenuItem
+            className="gap-2 text-app-sm text-ctp-subtext0 focus:bg-ctp-surface0 focus:text-ctp-text"
+            onSelect={handleCut}
+          >
+            <Scissors className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <span className="flex-1">Cut</span>
+            <span className="text-ctp-overlay1">⌘X</span>
+          </ContextMenuItem>
+          <ContextMenuItem
+            className="gap-2 text-app-sm text-ctp-subtext0 focus:bg-ctp-surface0 focus:text-ctp-text"
+            onSelect={handleCopy}
+          >
+            <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <span className="flex-1">Copy</span>
+            <span className="text-ctp-overlay1">⌘C</span>
+          </ContextMenuItem>
+          {clipboard && (
+            <ContextMenuItem
+              className="gap-2 text-app-sm text-ctp-subtext0 focus:bg-ctp-surface0 focus:text-ctp-text"
+              onSelect={handlePaste}
+            >
+              <Clipboard className="h-3.5 w-3.5" strokeWidth={1.5} />
+              <span className="flex-1">Paste</span>
+              <span className="text-ctp-overlay1">⌘V</span>
+            </ContextMenuItem>
+          )}
+
+          <ContextMenuSeparator className="bg-ctp-surface0" />
+
+          {/* Copy Path / Copy Relative Path */}
+          <ContextMenuItem
+            className="gap-2 text-app-sm text-ctp-subtext0 focus:bg-ctp-surface0 focus:text-ctp-text"
+            onSelect={handleCopyPath}
+          >
+            <Link className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Copy Path
+          </ContextMenuItem>
+          <ContextMenuItem
+            className="gap-2 text-app-sm text-ctp-subtext0 focus:bg-ctp-surface0 focus:text-ctp-text"
+            onSelect={handleCopyRelativePath}
+          >
+            <Link className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Copy Relative Path
+          </ContextMenuItem>
+
+          <ContextMenuSeparator className="bg-ctp-surface0" />
+
+          {/* Reveal in Finder */}
+          <ContextMenuItem
+            className="gap-2 text-app-sm text-ctp-subtext0 focus:bg-ctp-surface0 focus:text-ctp-text"
+            onSelect={handleRevealInFinder}
+          >
+            <FolderOpen className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Reveal in Finder
+          </ContextMenuItem>
+
+          <ContextMenuSeparator className="bg-ctp-surface0" />
+
+          {/* Rename / Delete */}
           <ContextMenuItem
             className="gap-2 text-app-sm text-ctp-subtext0 focus:bg-ctp-surface0 focus:text-ctp-text"
             onSelect={handleRenameStart}
@@ -330,6 +509,27 @@ export const FileTreeNode = memo(function FileTreeNode({
           )}
         </ContextMenuContent>
       </ContextMenu>
+
+      {/* Inline new file/folder creation input */}
+      {node.isDir && creatingType && (
+        <div
+          className="flex items-center gap-1.5 px-2 py-1"
+          style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
+        >
+          <div className="w-3 shrink-0" />
+          <FileIcon isDir={creatingType === "dir"} className="shrink-0" />
+          <input
+            ref={createInputRef}
+            type="text"
+            placeholder={creatingType === "file" ? "filename..." : "foldername..."}
+            className="min-w-0 flex-1 rounded bg-ctp-surface1 px-1 py-0 text-app text-ctp-text outline-none ring-1 ring-ctp-mauve"
+            value={creatingName}
+            onChange={(e) => setCreatingName(e.target.value)}
+            onKeyDown={handleCreateKeyDown}
+            onBlur={() => { setCreatingType(null); setCreatingName(""); }}
+          />
+        </div>
+      )}
 
       {/* Delete confirmation dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

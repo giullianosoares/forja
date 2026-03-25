@@ -839,6 +839,10 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle("reveal_in_finder", async (_event, args: { path: string }) => {
+  shell.showItemInFolder(args.path);
+});
+
 // Window controls
 ipcMain.handle("window:minimize", (event) => {
   BrowserWindow.fromWebContents(event.sender)?.minimize();
