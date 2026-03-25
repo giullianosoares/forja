@@ -56,6 +56,8 @@ export interface ProjectUiState {
   }>;
   activeTabIndex?: number;
   layoutJson?: Record<string, unknown>;
+  rightPanelActiveView?: string;
+  activePluginName?: string | null;
 }
 
 export interface WorkspaceProject {

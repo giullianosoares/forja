@@ -280,127 +280,6 @@ describe("tiling-layout store", () => {
     });
   });
 
-  describe("per-project layout", () => {
-    it("saves and restores layout for a project", () => {
-      const projectPath = "/project-a";
-
-      useTilingLayoutStore
-        .getState()
-        .addBlock({ type: "browser", url: "https://test.com" });
-      useTilingLayoutStore.getState().saveLayoutForProject(projectPath);
-
-      useTilingLayoutStore.getState().resetToDefault();
-      const afterReset = JSON.stringify(
-        useTilingLayoutStore.getState().model.toJson(),
-      );
-      expect(afterReset).not.toContain("https://test.com");
-
-      useTilingLayoutStore.getState().restoreLayoutForProject(projectPath);
-      const restored = JSON.stringify(
-        useTilingLayoutStore.getState().model.toJson(),
-      );
-      expect(restored).toContain("https://test.com");
-    });
-
-    it("skips model replacement when saved layout matches current model", () => {
-      const store = useTilingLayoutStore.getState();
-
-      // Add a block, save, then restore the same project (JSON matches)
-      store.addBlock({ type: "browser", url: "https://test.com" });
-      store.saveLayoutForProject("/project-same");
-
-      // Capture model reference before restore
-      const modelBefore = useTilingLayoutStore.getState().model;
-
-      // Restore the same project — should NOT create a new Model
-      useTilingLayoutStore.getState().restoreLayoutForProject("/project-same");
-      const modelAfter = useTilingLayoutStore.getState().model;
-
-      // Same object reference = no unnecessary FlexLayout re-render
-      expect(modelAfter).toBe(modelBefore);
-    });
-
-    it("falls back to default when no saved layout exists", () => {
-      useTilingLayoutStore
-        .getState()
-        .restoreLayoutForProject("/nonexistent");
-      const { model } = useTilingLayoutStore.getState();
-      expect(model.getNodeById(TABSET_IDS.main)).toBeDefined();
-    });
-
-    it("preserves browser blocks in saved layout when validTerminalIds is provided", () => {
-      const store = useTilingLayoutStore.getState();
-
-      // Add a terminal and a browser block, save for project A
-      store.addBlock(
-        { type: "terminal", tabId: "term-1", sessionType: "claude" },
-        undefined,
-        "term-1",
-      );
-      store.addBlock(
-        { type: "browser", url: "https://google.com" },
-        undefined,
-        "browser-1",
-      );
-      store.saveLayoutForProject("/project-a");
-
-      // Switch away and back — simulate by resetting model and restoring
-      store.resetToDefault();
-      expect(store.hasBlock("browser-1")).toBe(false);
-
-      // Restore with validTerminalIds containing only the terminal ID
-      store.restoreLayoutForProject("/project-a", new Set(["term-1"]));
-
-      // Browser block should be preserved (it's NOT orphaned, it's layout-managed)
-      expect(useTilingLayoutStore.getState().hasBlock("browser-1")).toBe(true);
-      // Terminal block should also be preserved (ID is in validIds)
-      expect(useTilingLayoutStore.getState().hasBlock("term-1")).toBe(true);
-
-      // URL should be intact
-      const json = JSON.stringify(useTilingLayoutStore.getState().model.toJson());
-      expect(json).toContain("https://google.com");
-    });
-
-    it("preserves structural blocks (file-tree) and strips terminal blocks when no saved layout exists", () => {
-      const store = useTilingLayoutStore.getState();
-
-      // Add a file-tree block and two terminal blocks (simulating project A's layout)
-      store.addBlock(
-        { type: "file-tree", projectName: "ProjectA" },
-        TABSET_IDS.main,
-        "tab-file-tree",
-      );
-      store.addBlock(
-        { type: "terminal", tabId: "tab-1", sessionType: "claude" },
-        undefined,
-        "tab-1",
-      );
-      store.addBlock(
-        { type: "terminal", tabId: "tab-2", sessionType: "terminal" },
-        undefined,
-        "tab-2",
-      );
-
-      // Verify blocks exist before switch
-      expect(useTilingLayoutStore.getState().hasBlock("tab-file-tree")).toBe(true);
-      expect(useTilingLayoutStore.getState().hasBlock("tab-1")).toBe(true);
-      expect(useTilingLayoutStore.getState().hasBlock("tab-2")).toBe(true);
-
-      // Restore layout for a project with no saved state
-      useTilingLayoutStore.getState().restoreLayoutForProject("/new-project");
-
-      // File-tree block should be preserved
-      expect(useTilingLayoutStore.getState().hasBlock("tab-file-tree")).toBe(true);
-
-      // Terminal blocks should be stripped
-      expect(useTilingLayoutStore.getState().hasBlock("tab-1")).toBe(false);
-      expect(useTilingLayoutStore.getState().hasBlock("tab-2")).toBe(false);
-
-      // tabset-main should still exist
-      expect(useTilingLayoutStore.getState().model.getNodeById(TABSET_IDS.main)).toBeDefined();
-    });
-  });
-
   describe("resetToDefault", () => {
     it("resets model to default layout", () => {
       useTilingLayoutStore
@@ -1797,47 +1676,6 @@ describe("tiling-layout store", () => {
       expect(model.getNodeById("t1")).toBeDefined();
     });
 
-    it("restoreLayoutForProject strips empty tabsets", () => {
-      // Build and save a layout with ghost tabset
-      const layoutWithGhost: any = {
-        global: {
-          tabEnableClose: true,
-          tabSetEnableDeleteWhenEmpty: true,
-        },
-        layout: {
-          type: "row",
-          weight: 100,
-          children: [
-            {
-              type: "tabset",
-              weight: 50,
-              id: TABSET_IDS.main,
-              enableDeleteWhenEmpty: false,
-              children: [
-                { type: "tab", name: "Terminal", component: "terminal", id: "t1", config: { type: "terminal", sessionType: "terminal" } },
-              ],
-            },
-            {
-              type: "tabset",
-              weight: 50,
-              id: "ghost-tabset",
-              children: [],
-            },
-          ],
-        },
-      };
-
-      // Manually set layoutByProject
-      useTilingLayoutStore.setState({
-        layoutByProject: { "/project-ghost": layoutWithGhost },
-      });
-
-      useTilingLayoutStore.getState().restoreLayoutForProject("/project-ghost");
-
-      const { model } = useTilingLayoutStore.getState();
-      expect(model.getNodeById("ghost-tabset")).toBeUndefined();
-      expect(model.getNodeById(TABSET_IDS.main)).toBeDefined();
-    });
   });
 
   describe("hasBlockOfType", () => {
@@ -2032,14 +1870,6 @@ describe("tiling-layout store", () => {
       expect(useTilingLayoutStore.getState().tabCount).toBe(1);
     });
 
-    it("updates when restoreLayoutForProject is called", () => {
-      useTilingLayoutStore.getState().addBlock({ type: "terminal", sessionType: "terminal" });
-      useTilingLayoutStore.getState().saveLayoutForProject("/p1");
-      useTilingLayoutStore.getState().resetToDefault();
-      expect(useTilingLayoutStore.getState().tabCount).toBe(0);
-      useTilingLayoutStore.getState().restoreLayoutForProject("/p1");
-      expect(useTilingLayoutStore.getState().tabCount).toBe(1);
-    });
   });
 
   describe("syncTabCount", () => {

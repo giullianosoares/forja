@@ -552,6 +552,33 @@ describe("detectSessionId", () => {
   it("extracts session ID from codex output", () => {
     expect(detectSessionId("codex", "session: codex-session-99")).toBe("codex-session-99");
   });
+
+  describe("ANSI escape code handling", () => {
+    it("extracts claude session ID from ANSI-wrapped output", () => {
+      const ansiData = "\x1b[2msession:\x1b[0m \x1b[33mabc-def-123\x1b[0m";
+      expect(detectSessionId("claude", ansiData)).toBe("abc-def-123");
+    });
+
+    it("extracts session ID when SGR codes surround the text", () => {
+      const ansiData = "\x1b[1;36msession: deadbeef-cafe-1234\x1b[0m";
+      expect(detectSessionId("claude", ansiData)).toBe("deadbeef-cafe-1234");
+    });
+
+    it("extracts session ID from cursor-positioned TUI output", () => {
+      const ansiData = "\x1b[24;60H\x1b[2msession:\x1b[22m \x1b[33m01234567-89ab-cdef-0123-456789abcdef\x1b[0m";
+      expect(detectSessionId("claude", ansiData)).toBe("01234567-89ab-cdef-0123-456789abcdef");
+    });
+
+    it("extracts gemini session ID from ANSI-wrapped output", () => {
+      const ansiData = "\x1b[1msession:\x1b[0m \x1b[32mgemini-sess-42\x1b[0m";
+      expect(detectSessionId("gemini", ansiData)).toBe("gemini-sess-42");
+    });
+
+    it("extracts cursor-agent chat ID from ANSI-wrapped output", () => {
+      const ansiData = "\x1b[36mchat:\x1b[0m \x1b[33mmy-chat-id\x1b[0m";
+      expect(detectSessionId("cursor-agent", ansiData)).toBe("my-chat-id");
+    });
+  });
 });
 
 describe("computeTabDisplayNames", () => {

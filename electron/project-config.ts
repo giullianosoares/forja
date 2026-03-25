@@ -20,6 +20,8 @@ export interface ForjaProjectConfig {
     layoutJson?: Record<string, unknown>;
     tabs?: Array<{ id?: string; sessionType: string; cliSessionId?: string; customName?: string }>;
     activeTabIndex?: number;
+    rightPanelActiveView?: string;
+    activePluginName?: string | null;
   };
 }
 

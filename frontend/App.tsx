@@ -42,7 +42,7 @@ import { useThemeStore } from "./stores/theme";
 import type { ThemeDefinition } from "@/themes";
 import { applyBackgroundOpacity } from "@/themes/apply";
 import { usePerformanceStore } from "./stores/performance";
-import { useProjectsStore } from "./stores/projects";
+import { useProjectsStore, saveCurrentProjectToDisk } from "./stores/projects";
 import { useWorkspaceStore } from "./stores/workspace";
 
 import { usePluginsStore } from "./stores/plugins";
@@ -702,20 +702,14 @@ function App({
     if (initialWorkspaceId) return;
     if (useProjectsStore.getState().isSwitchingProject) return;
 
-    // Persist full tab data + layout to config.json per project
+    // Persist full UI state to config.json per project (single source of truth)
     if (currentPath) {
+      saveCurrentProjectToDisk(currentPath).catch((err: unknown) =>
+        console.warn("[App] Failed to save project UI state:", err),
+      );
+
       const wsId = useWorkspaceStore.getState().activeWorkspaceId;
       if (wsId) {
-        const tabsStore = useTerminalTabsStore.getState();
-        invoke("save_project_ui_state", {
-          workspaceId: wsId,
-          path: currentPath,
-          state: {
-            ...tabsStore.serializeTabsForSave(currentPath),
-            layoutJson: useTilingLayoutStore.getState().getModelJson() as Record<string, unknown>,
-          },
-        }).catch((err: unknown) => console.warn("[App] Failed to save project tab state:", err));
-
         invoke("set_last_active_project_path", {
           workspaceId: wsId,
           projectPath: currentPath,
@@ -732,29 +726,19 @@ function App({
     tilingTabCount,
   ]);
 
-  // Safety net: save ALL projects' terminal tabs on window close.
-  // The reactive effect above only covers the active project; this ensures
-  // non-active projects' tabs are persisted before the window is destroyed.
+  // Safety net: save active project's UI state on window close.
+  // Non-active projects were already saved to disk when the user switched away.
   useEffect(() => {
     if (initialWorkspaceId) return;
 
     const handler = () => {
-      const tabsStore = useTerminalTabsStore.getState();
-      const wsId = useWorkspaceStore.getState().activeWorkspaceId;
-      if (!wsId) return;
+      const activeProjectPath = useProjectsStore.getState().activeProjectPath;
+      if (!activeProjectPath) return;
 
-      const layoutJson = useTilingLayoutStore.getState().getModelJson() as Record<string, unknown>;
-      const projectPaths = new Set(tabsStore.tabs.map((t) => t.path));
-      for (const projectPath of projectPaths) {
-        invoke("save_project_ui_state", {
-          workspaceId: wsId,
-          path: projectPath,
-          state: {
-            ...tabsStore.serializeTabsForSave(projectPath),
-            layoutJson,
-          },
-        }).catch(() => {});
-      }
+      // Fire-and-forget — beforeunload is synchronous, but IPC is async.
+      // This is a best-effort save; the reactive persist effect above handles
+      // most saves already.
+      saveCurrentProjectToDisk(activeProjectPath).catch(() => {});
     };
 
     window.addEventListener("beforeunload", handler);

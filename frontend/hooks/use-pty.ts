@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, getCurrentWindow } from "@/lib/ipc";
 import { ptyDispatcher } from "@/lib/pty-dispatcher";
 import { CLI_REGISTRY } from "@/lib/cli-registry";
+import { stripAnsi } from "@/lib/strip-ansi";
 import { useTerminalTabsStore } from "@/stores/terminal-tabs";
 
 interface UsePtyOptions {
@@ -36,7 +37,7 @@ export function usePty(options: UsePtyOptions) {
         if (tab && tab.sessionType !== "terminal") {
           const def = CLI_REGISTRY[tab.sessionType];
           if (def?.sessionIdPattern) {
-            const match = data.match(def.sessionIdPattern);
+            const match = stripAnsi(data).match(def.sessionIdPattern);
             if (match?.[1]) {
               sessionIdFound = true;
               useTerminalTabsStore.getState().setCliSessionId(tabId, match[1]);

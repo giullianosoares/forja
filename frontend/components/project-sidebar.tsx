@@ -311,12 +311,29 @@ export function ProjectSidebar({ onOpenProject }: ProjectSidebarProps) {
     [projects, reorderProjects]
   );
 
-  const handleRemoveConfirm = useCallback(() => {
+  const handleRemoveConfirm = useCallback(async () => {
     if (!removingProject) return;
-    removeProject(removingProject.path);
-    useFileTreeStore.getState().removeProjectTree(removingProject.path);
+    const removedPath = removingProject.path;
+    const wasActive = removedPath === activeProjectPath;
+
+    // Compute the next active project before removal
+    const remaining = projects.filter((p) => p.path !== removedPath);
+    const nextActive = wasActive ? (remaining[0]?.path ?? null) : null;
+
+    removeProject(removedPath);
+    useFileTreeStore.getState().removeProjectTree(removedPath);
     setRemovingProject(null);
-  }, [removingProject, removeProject]);
+
+    // Clean up terminal tabs for the removed project
+    const { useTerminalTabsStore } = await import("@/stores/terminal-tabs");
+    useTerminalTabsStore.getState().cleanupProjectState(removedPath);
+
+    // When the active project was removed, switchToProject restores the
+    // new active project's layout/tabs/panels and resets isSwitchingProject.
+    if (wasActive && nextActive) {
+      await switchToProject(nextActive);
+    }
+  }, [removingProject, removeProject, activeProjectPath, projects, switchToProject]);
 
   return (
     <TooltipProvider delayDuration={500}>

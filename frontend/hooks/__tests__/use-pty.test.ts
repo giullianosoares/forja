@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { usePty } from "../use-pty";
 import { ptyDispatcher } from "@/lib/pty-dispatcher";
+import { useTerminalTabsStore } from "@/stores/terminal-tabs";
 
 const mockInvoke = vi.fn();
 
@@ -218,5 +219,53 @@ describe("usePty", () => {
 
     const callArgs = mockInvoke.mock.calls[0];
     expect(callArgs[1]).not.toHaveProperty("resumeArgs");
+  });
+
+  describe("session ID detection with ANSI codes", () => {
+    beforeEach(() => {
+      // Set up a claude tab in the store so the detection logic has a tab to find
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-ansi",
+            name: "Claude Code",
+            path: "/test",
+            isRunning: true,
+            sessionType: "claude",
+          },
+        ],
+        activeTabId: "tab-ansi",
+      });
+    });
+
+    it("detects session ID from ANSI-wrapped PTY output", () => {
+      renderHook(() => usePty({ tabId: "tab-ansi" }));
+
+      // Simulate PTY data with ANSI escape codes wrapping the session info
+      act(() => {
+        mockDispatcher._simulateData(
+          "tab-ansi",
+          "\x1b[2msession:\x1b[0m \x1b[33mabc-def-123\x1b[0m"
+        );
+      });
+
+      const tab = useTerminalTabsStore.getState().tabs.find(
+        (t) => t.id === "tab-ansi"
+      );
+      expect(tab?.cliSessionId).toBe("abc-def-123");
+    });
+
+    it("detects session ID from plain text PTY output", () => {
+      renderHook(() => usePty({ tabId: "tab-ansi" }));
+
+      act(() => {
+        mockDispatcher._simulateData("tab-ansi", "session: deadbeef-1234");
+      });
+
+      const tab = useTerminalTabsStore.getState().tabs.find(
+        (t) => t.id === "tab-ansi"
+      );
+      expect(tab?.cliSessionId).toBe("deadbeef-1234");
+    });
   });
 });

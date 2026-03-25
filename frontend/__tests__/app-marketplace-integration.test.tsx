@@ -30,8 +30,6 @@ describe("App marketplace integration", () => {
     useRightPanelStore.setState({
       isOpen: false,
       activeView: "empty",
-      isOpenByProject: {},
-      activeViewByProject: {},
     });
     usePluginsStore.setState({
       plugins: [],
@@ -41,7 +39,6 @@ describe("App marketplace integration", () => {
       pluginBadges: {},
       loading: false,
       permissionPrompt: null,
-      activePluginNameByProject: {},
     });
   });
 

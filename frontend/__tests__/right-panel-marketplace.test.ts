@@ -6,26 +6,11 @@ describe("right-panel marketplace view", () => {
     useRightPanelStore.setState({
       isOpen: false,
       activeView: "empty",
-      isOpenByProject: {},
-      activeViewByProject: {},
     });
   });
 
   it("supports marketplace as an active view", () => {
     useRightPanelStore.getState().setActiveView("marketplace");
-    expect(useRightPanelStore.getState().activeView).toBe("marketplace");
-  });
-
-  it("persists marketplace view per project", () => {
-    useRightPanelStore.getState().setActiveView("marketplace");
-    useRightPanelStore.setState({ isOpen: true });
-    useRightPanelStore.getState().saveStateForProject("/test/project");
-
-    // Switch away
-    useRightPanelStore.getState().setActiveView("plugin");
-
-    // Restore
-    useRightPanelStore.getState().restoreStateForProject("/test/project");
     expect(useRightPanelStore.getState().activeView).toBe("marketplace");
   });
 

@@ -22,6 +22,22 @@ vi.mock("@/stores/file-tree", () => ({
   },
 }));
 
+vi.mock("@/stores/terminal-tabs", () => ({
+  useTerminalTabsStore: {
+    getState: vi.fn(() => ({
+      cleanupProjectState: vi.fn(),
+    })),
+  },
+}));
+
+vi.mock("@/stores/tiling-layout", () => ({
+  useTilingLayoutStore: {
+    getState: vi.fn(() => ({
+    })),
+    setState: vi.fn(),
+  },
+}));
+
 const mockTogglePanel = vi.fn();
 vi.mock("@/stores/agent-chat", () => ({
   useAgentChatStore: Object.assign(

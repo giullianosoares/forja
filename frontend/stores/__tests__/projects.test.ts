@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useProjectsStore } from "../projects";
+import { useProjectsStore, saveCurrentProjectToDisk, loadProjectFromDisk } from "../projects";
 import { useWorkspaceStore } from "../workspace";
 
 vi.mock("@/lib/ipc", () => ({
@@ -12,9 +12,7 @@ vi.mock("@/stores/file-tree", () => ({
   useFileTreeStore: {
     getState: vi.fn(() => ({
       openProjectPath: vi.fn(),
-      saveSidebarStateForProject: vi.fn(),
-      restoreSidebarStateForProject: vi.fn(),
-      isOpenByProject: {},
+      isOpen: true,
     })),
     setState: vi.fn(),
   },
@@ -32,26 +30,20 @@ vi.mock("@/stores/focus-mode", () => ({
   },
 }));
 
-const mockSavePreviewForProject = vi.fn();
-const mockRestorePreviewForProject = vi.fn();
 vi.mock("@/stores/file-preview", () => ({
   useFilePreviewStore: {
     getState: vi.fn(() => ({
-      savePreviewForProject: mockSavePreviewForProject,
-      restorePreviewForProject: mockRestorePreviewForProject,
-      previewByProject: {},
+      currentFile: null,
     })),
+    setState: vi.fn(),
   },
 }));
 
-const mockSaveActivePluginForProject = vi.fn();
-const mockRestoreActivePluginForProject = vi.fn();
 vi.mock("@/stores/plugins", () => ({
   usePluginsStore: {
     getState: vi.fn(() => ({
-      saveActivePluginForProject: mockSaveActivePluginForProject,
-      restoreActivePluginForProject: mockRestoreActivePluginForProject,
       activePluginName: null,
+      pinnedPluginName: null,
     })),
     setState: vi.fn(),
   },
@@ -71,6 +63,7 @@ describe("useProjectsStore", () => {
       projects: [],
       activeProjectPath: null,
       loading: false,
+      isSwitchingProject: false,
     });
     useWorkspaceStore.setState({ activeWorkspaceId: "ws-test" });
   });
@@ -177,9 +170,7 @@ describe("useProjectsStore", () => {
     const mockOpenProjectPath = vi.fn().mockResolvedValue(undefined);
     vi.mocked(useFileTreeStore.getState).mockReturnValue({
       openProjectPath: mockOpenProjectPath,
-      saveSidebarStateForProject: vi.fn(),
-      restoreSidebarStateForProject: vi.fn(),
-      isOpenByProject: {},
+      isOpen: true,
     } as never);
 
     useProjectsStore.setState({
@@ -478,48 +469,6 @@ describe("useProjectsStore", () => {
     expect(detectCalls[1][1]).toEqual({ path: "/b/app2" });
   });
 
-  it("saves preview for previous project and restores for new project when switching", async () => {
-    const mockOpenProjectPath = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useFileTreeStore.getState).mockReturnValue({
-      openProjectPath: mockOpenProjectPath,
-      saveSidebarStateForProject: vi.fn(),
-      restoreSidebarStateForProject: vi.fn(),
-      isOpenByProject: {},
-    } as never);
-
-    useProjectsStore.setState({
-      projects: [
-        { path: "/project-a", name: "project-a", lastOpened: "" },
-        { path: "/project-b", name: "project-b", lastOpened: "" },
-      ],
-      activeProjectPath: "/project-a",
-    });
-
-    await useProjectsStore.getState().switchToProject("/project-b");
-
-    expect(mockSavePreviewForProject).toHaveBeenCalledWith("/project-a");
-    expect(mockRestorePreviewForProject).toHaveBeenCalledWith("/project-b");
-  });
-
-  it("does not save or restore preview when switching to the same project", async () => {
-    const mockOpenProjectPath = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useFileTreeStore.getState).mockReturnValue({
-      openProjectPath: mockOpenProjectPath,
-      saveSidebarStateForProject: vi.fn(),
-      restoreSidebarStateForProject: vi.fn(),
-      isOpenByProject: {},
-    } as never);
-
-    useProjectsStore.setState({
-      projects: [{ path: "/project-a", name: "project-a", lastOpened: "" }],
-      activeProjectPath: "/project-a",
-    });
-
-    await useProjectsStore.getState().switchToProject("/project-a");
-
-    expect(mockSavePreviewForProject).not.toHaveBeenCalled();
-    expect(mockRestorePreviewForProject).not.toHaveBeenCalled();
-  });
 
   describe("thinkingProjects and notifiedProjects", () => {
     beforeEach(() => {
@@ -621,8 +570,6 @@ describe("useProjectsStore", () => {
         activeTabId: null,
         counter: 0,
         isTerminalFullscreen: false,
-        activeTabIdByProject: {},
-        isFullscreenByProject: {},
       });
     });
 
@@ -630,9 +577,6 @@ describe("useProjectsStore", () => {
       vi.mocked(invoke).mockResolvedValue(undefined);
       vi.mocked(useFileTreeStore.getState).mockReturnValue({
         openProjectPath: vi.fn().mockResolvedValue(undefined),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       } as never);
 
       // Set up tabs for project-a (outgoing project)
@@ -684,9 +628,6 @@ describe("useProjectsStore", () => {
 
       vi.mocked(useFileTreeStore.getState).mockReturnValue({
         openProjectPath: vi.fn().mockResolvedValue(undefined),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       } as never);
 
       useProjectsStore.setState({
@@ -721,9 +662,6 @@ describe("useProjectsStore", () => {
 
       vi.mocked(useFileTreeStore.getState).mockReturnValue({
         openProjectPath: vi.fn().mockResolvedValue(undefined),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       } as never);
 
       // Pre-populate in-memory tabs for project-b
@@ -753,9 +691,6 @@ describe("useProjectsStore", () => {
     vi.spyOn(useTilingLayoutStore, "getState").mockReturnValue({
       ...useTilingLayoutStore.getState(),
       updateFileTreeTabName: mockUpdateFileTreeTabName,
-      saveLayoutForProject: vi.fn(),
-      restoreLayoutForProject: vi.fn(),
-      layoutByProject: {},
     } as never);
 
     // Simulate the stale snapshot bug:
@@ -773,9 +708,6 @@ describe("useProjectsStore", () => {
       const isAfterOpen = callCount > 99;
       const base = {
         openProjectPath: mockOpenProjectPath,
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       };
       if (!isAfterOpen) {
         return { ...base, tree: { root: { name: "forja", path: "/project-a", isDir: true } } } as never;
@@ -797,58 +729,16 @@ describe("useProjectsStore", () => {
     expect(mockUpdateFileTreeTabName).toHaveBeenCalledWith("play-etl-monitor");
   });
 
-  it("only restores preview (no save) when there is no previous active project", async () => {
-    const mockOpenProjectPath = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(useFileTreeStore.getState).mockReturnValue({
-      openProjectPath: mockOpenProjectPath,
-      saveSidebarStateForProject: vi.fn(),
-      restoreSidebarStateForProject: vi.fn(),
-      isOpenByProject: {},
-    } as never);
-
-    useProjectsStore.setState({
-      projects: [{ path: "/project-a", name: "project-a", lastOpened: "" }],
-      activeProjectPath: null,
-    });
-
-    await useProjectsStore.getState().switchToProject("/project-a");
-
-    expect(mockSavePreviewForProject).not.toHaveBeenCalled();
-    expect(mockRestorePreviewForProject).toHaveBeenCalledWith("/project-a");
-  });
 
   describe("switchToProject plugin and right panel guard", () => {
     beforeEach(() => {
       // Reset right panel store to defaults
       useRightPanelStore.setState({
         isOpen: false,
-        isOpenByProject: {},
         activeView: "empty",
-        activeViewByProject: {},
       });
     });
 
-    it("saves active plugin for previous project and restores for new project", async () => {
-      vi.mocked(useFileTreeStore.getState).mockReturnValue({
-        openProjectPath: vi.fn().mockResolvedValue(undefined),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
-      } as never);
-
-      useProjectsStore.setState({
-        projects: [
-          { path: "/project-a", name: "a", lastOpened: "" },
-          { path: "/project-b", name: "b", lastOpened: "" },
-        ],
-        activeProjectPath: "/project-a",
-      });
-
-      await useProjectsStore.getState().switchToProject("/project-b");
-
-      expect(mockSaveActivePluginForProject).toHaveBeenCalledWith("/project-a");
-      expect(mockRestoreActivePluginForProject).toHaveBeenCalledWith("/project-b");
-    });
 
     it("does not open right panel from disk state when no active plugin", async () => {
       vi.mocked(invoke).mockImplementation(async (ch: string) => {
@@ -857,16 +747,11 @@ describe("useProjectsStore", () => {
       });
 
       vi.mocked(usePluginsStore.getState).mockReturnValue({
-        saveActivePluginForProject: mockSaveActivePluginForProject,
-        restoreActivePluginForProject: mockRestoreActivePluginForProject,
         activePluginName: null,
       } as never);
 
       vi.mocked(useFileTreeStore.getState).mockReturnValue({
         openProjectPath: vi.fn().mockResolvedValue(undefined),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       } as never);
 
       useProjectsStore.setState({
@@ -886,16 +771,11 @@ describe("useProjectsStore", () => {
       });
 
       vi.mocked(usePluginsStore.getState).mockReturnValue({
-        saveActivePluginForProject: mockSaveActivePluginForProject,
-        restoreActivePluginForProject: mockRestoreActivePluginForProject,
         activePluginName: "my-plugin",
       } as never);
 
       vi.mocked(useFileTreeStore.getState).mockReturnValue({
         openProjectPath: vi.fn().mockResolvedValue(undefined),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       } as never);
 
       useProjectsStore.setState({
@@ -914,8 +794,6 @@ describe("useProjectsStore", () => {
 
       const mockSetActivePlugin = vi.fn();
       vi.mocked(usePluginsStore.getState).mockReturnValue({
-        saveActivePluginForProject: mockSaveActivePluginForProject,
-        restoreActivePluginForProject: mockRestoreActivePluginForProject,
         activePluginName: null, // restored null for new project
         pinnedPluginName: "pomodoro",
         setActivePlugin: mockSetActivePlugin,
@@ -923,9 +801,6 @@ describe("useProjectsStore", () => {
 
       vi.mocked(useFileTreeStore.getState).mockReturnValue({
         openProjectPath: vi.fn().mockResolvedValue(undefined),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       } as never);
 
       // Panel was open before switching
@@ -952,8 +827,6 @@ describe("useProjectsStore", () => {
 
       const mockSetActivePlugin = vi.fn();
       vi.mocked(usePluginsStore.getState).mockReturnValue({
-        saveActivePluginForProject: mockSaveActivePluginForProject,
-        restoreActivePluginForProject: mockRestoreActivePluginForProject,
         activePluginName: null, // always null after restore (new projects)
         pinnedPluginName: "pomodoro",
         setActivePlugin: mockSetActivePlugin,
@@ -961,9 +834,6 @@ describe("useProjectsStore", () => {
 
       vi.mocked(useFileTreeStore.getState).mockReturnValue({
         openProjectPath: vi.fn().mockResolvedValue(undefined),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       } as never);
 
       useRightPanelStore.setState({ isOpen: true, activeView: "plugin" });
@@ -989,17 +859,12 @@ describe("useProjectsStore", () => {
       vi.mocked(invoke).mockResolvedValue(null); // no saved disk state
 
       vi.mocked(usePluginsStore.getState).mockReturnValue({
-        saveActivePluginForProject: mockSaveActivePluginForProject,
-        restoreActivePluginForProject: mockRestoreActivePluginForProject,
         activePluginName: null,
         pinnedPluginName: null,
       } as never);
 
       vi.mocked(useFileTreeStore.getState).mockReturnValue({
         openProjectPath: vi.fn().mockResolvedValue(undefined),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       } as never);
 
       useRightPanelStore.setState({ isOpen: false, activeView: "empty" });
@@ -1029,9 +894,6 @@ describe("useProjectsStore", () => {
 
       vi.mocked(useFileTreeStore.getState).mockReturnValue({
         openProjectPath: vi.fn().mockResolvedValue(undefined),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       } as never);
 
       useProjectsStore.setState({
@@ -1057,9 +919,6 @@ describe("useProjectsStore", () => {
 
       vi.mocked(useFileTreeStore.getState).mockReturnValue({
         openProjectPath: vi.fn().mockResolvedValue(undefined),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       } as never);
 
       useProjectsStore.setState({
@@ -1077,6 +936,72 @@ describe("useProjectsStore", () => {
     });
   });
 
+  describe("removeProject preserves other projects' state", () => {
+    it("sets isSwitchingProject during removal of active project", () => {
+      vi.mocked(invoke).mockResolvedValue(undefined);
+
+      useProjectsStore.setState({
+        projects: [
+          { path: "/a", name: "a", lastOpened: "" },
+          { path: "/b", name: "b", lastOpened: "" },
+        ],
+        activeProjectPath: "/a",
+        isSwitchingProject: false,
+      });
+
+      // Observe the flag during the synchronous part of removal
+      const observed: boolean[] = [];
+      const unsub = useProjectsStore.subscribe((state) => {
+        observed.push(state.isSwitchingProject);
+      });
+
+      useProjectsStore.getState().removeProject("/a");
+
+      unsub();
+
+      // The flag must have been set to true at some point to guard persist effects
+      expect(observed).toContain(true);
+    });
+
+    it("does not change activeProjectPath when removing a non-active project", () => {
+      vi.mocked(invoke).mockResolvedValue(undefined);
+
+      useProjectsStore.setState({
+        projects: [
+          { path: "/a", name: "a", lastOpened: "" },
+          { path: "/b", name: "b", lastOpened: "" },
+        ],
+        activeProjectPath: "/a",
+      });
+
+      useProjectsStore.getState().removeProject("/b");
+
+      const { projects, activeProjectPath } = useProjectsStore.getState();
+      expect(projects).toHaveLength(1);
+      expect(activeProjectPath).toBe("/a");
+    });
+
+    it("cleanupProjectState on terminal-tabs removes tabs for the removed project", () => {
+      useTerminalTabsStore.setState({
+        tabs: [
+          { id: "tab-1", path: "/a", name: "Claude", sessionType: "claude" as any, isRunning: true, cliSessionId: null, customName: undefined },
+          { id: "tab-2", path: "/b", name: "Claude", sessionType: "claude" as any, isRunning: true, cliSessionId: null, customName: undefined },
+        ],
+        activeTabId: "tab-1",
+      });
+
+      useTerminalTabsStore.getState().cleanupProjectState("/a");
+
+      const tabsState = useTerminalTabsStore.getState();
+      // Tabs for the removed project should be gone
+      expect(tabsState.tabs.filter((t) => t.path === "/a")).toHaveLength(0);
+      // Other project's tabs should be preserved
+      expect(tabsState.tabs.filter((t) => t.path === "/b")).toHaveLength(1);
+      // Active tab should switch to remaining tab
+      expect(tabsState.activeTabId).toBe("tab-2");
+    });
+  });
+
   describe("isSwitchingProject flag", () => {
     it("defaults to false", () => {
       expect(useProjectsStore.getState().isSwitchingProject).toBe(false);
@@ -1089,9 +1014,6 @@ describe("useProjectsStore", () => {
         openProjectPath: vi.fn().mockImplementation(async () => {
           observed.push(useProjectsStore.getState().isSwitchingProject);
         }),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       } as never);
 
       useProjectsStore.setState({
@@ -1108,9 +1030,6 @@ describe("useProjectsStore", () => {
     it("is false even if switchToProject throws", async () => {
       vi.mocked(useFileTreeStore.getState).mockReturnValue({
         openProjectPath: vi.fn().mockRejectedValue(new Error("boom")),
-        saveSidebarStateForProject: vi.fn(),
-        restoreSidebarStateForProject: vi.fn(),
-        isOpenByProject: {},
       } as never);
 
       useProjectsStore.setState({
@@ -1121,6 +1040,167 @@ describe("useProjectsStore", () => {
       await useProjectsStore.getState().switchToProject("/project-x").catch(() => {});
 
       expect(useProjectsStore.getState().isSwitchingProject).toBe(false);
+    });
+  });
+
+  describe("saveCurrentProjectToDisk", () => {
+    beforeEach(() => {
+      vi.mocked(useFileTreeStore.getState).mockReturnValue({
+        openProjectPath: vi.fn(),
+        isOpen: true,
+      } as never);
+    });
+
+    it("is a no-op when no workspace ID", async () => {
+      useWorkspaceStore.setState({ activeWorkspaceId: null });
+
+      await saveCurrentProjectToDisk("/my-project");
+
+      const saveCalls = vi.mocked(invoke).mock.calls.filter(
+        (call) => call[0] === "save_project_ui_state"
+      );
+      expect(saveCalls).toHaveLength(0);
+    });
+
+    it("invokes save_project_ui_state with collected UI state", async () => {
+      vi.mocked(invoke).mockResolvedValue(undefined);
+
+      useWorkspaceStore.setState({ activeWorkspaceId: "ws-test" });
+
+      // Set up a tab for the project being saved
+      const tabsStore = useTerminalTabsStore.getState();
+      const id1 = tabsStore.nextTabId();
+      tabsStore.addTab(id1, "/my-project", "claude");
+      tabsStore.setCliSessionId(id1, "session-abc");
+
+      await saveCurrentProjectToDisk("/my-project");
+
+      const saveCalls = vi.mocked(invoke).mock.calls.filter(
+        (call) => call[0] === "save_project_ui_state"
+      );
+      expect(saveCalls).toHaveLength(1);
+
+      const payload = saveCalls[0][1] as any;
+      expect(payload.workspaceId).toBe("ws-test");
+      expect(payload.path).toBe("/my-project");
+      expect(payload.state).toBeDefined();
+      expect(payload.state.sidebarOpen).toBe(true);
+      expect(payload.state.tabs).toBeDefined();
+    });
+
+    it("includes rightPanelActiveView in the saved state", async () => {
+      vi.mocked(invoke).mockResolvedValue(undefined);
+      useWorkspaceStore.setState({ activeWorkspaceId: "ws-test" });
+
+      await saveCurrentProjectToDisk("/my-project");
+
+      const saveCalls = vi.mocked(invoke).mock.calls.filter(
+        (call) => call[0] === "save_project_ui_state"
+      );
+      expect(saveCalls).toHaveLength(1);
+
+      const state = (saveCalls[0][1] as any).state;
+      expect("rightPanelActiveView" in state).toBe(true);
+    });
+  });
+
+  describe("loadProjectFromDisk", () => {
+    it("is a no-op when no workspace ID", async () => {
+      useWorkspaceStore.setState({ activeWorkspaceId: null });
+
+      // Should not throw and not call any IPC
+      await loadProjectFromDisk("/my-project");
+
+      const getCalls = vi.mocked(invoke).mock.calls.filter(
+        (call) => call[0] === "get_project_ui_state"
+      );
+      expect(getCalls).toHaveLength(0);
+    });
+
+    it("is a no-op when no saved state returned", async () => {
+      useWorkspaceStore.setState({ activeWorkspaceId: "ws-test" });
+      vi.mocked(invoke).mockResolvedValue(null);
+
+      // Should not throw
+      await loadProjectFromDisk("/my-project");
+
+      const getCalls = vi.mocked(invoke).mock.calls.filter(
+        (call) => call[0] === "get_project_ui_state"
+      );
+      expect(getCalls).toHaveLength(1);
+    });
+
+    it("applies sidebarOpen to file-tree store", async () => {
+      useWorkspaceStore.setState({ activeWorkspaceId: "ws-test" });
+      vi.mocked(invoke).mockImplementation(async (ch: string) => {
+        if (ch === "get_project_ui_state") return { sidebarOpen: false };
+        return undefined;
+      });
+
+      await loadProjectFromDisk("/my-project");
+
+      expect(vi.mocked(useFileTreeStore.setState)).toHaveBeenCalledWith({ isOpen: false });
+    });
+
+    it("applies terminalFullscreen to terminal-tabs store", async () => {
+      useWorkspaceStore.setState({ activeWorkspaceId: "ws-test" });
+      vi.mocked(invoke).mockImplementation(async (ch: string) => {
+        if (ch === "get_project_ui_state") return { terminalFullscreen: true };
+        return undefined;
+      });
+
+      await loadProjectFromDisk("/my-project");
+
+      expect(useTerminalTabsStore.getState().isTerminalFullscreen).toBe(true);
+    });
+
+    it("restores terminal tabs from disk state", async () => {
+      useWorkspaceStore.setState({ activeWorkspaceId: "ws-test" });
+      vi.mocked(invoke).mockImplementation(async (ch: string) => {
+        if (ch === "get_project_ui_state") {
+          return {
+            tabs: [
+              { id: "loaded-tab-1", sessionType: "claude", cliSessionId: "sess-xyz" },
+            ],
+            activeTabIndex: 0,
+          };
+        }
+        return undefined;
+      });
+
+      // No existing tabs for the project
+      useTerminalTabsStore.setState({ tabs: [], activeTabId: null });
+
+      await loadProjectFromDisk("/load-project");
+
+      const tabs = useTerminalTabsStore.getState().getTabsForProject("/load-project");
+      expect(tabs).toHaveLength(1);
+      expect(tabs[0].id).toBe("loaded-tab-1");
+      expect(tabs[0].sessionType).toBe("claude");
+      expect(tabs[0].cliSessionId).toBe("sess-xyz");
+    });
+
+    it("does not overwrite existing in-memory tabs when loading from disk", async () => {
+      useWorkspaceStore.setState({ activeWorkspaceId: "ws-test" });
+      vi.mocked(invoke).mockImplementation(async (ch: string) => {
+        if (ch === "get_project_ui_state") {
+          return {
+            tabs: [{ id: "disk-tab", sessionType: "claude" }],
+          };
+        }
+        return undefined;
+      });
+
+      // Start with a clean slate and pre-populate in-memory tabs
+      useTerminalTabsStore.setState({ tabs: [], activeTabId: null });
+      const tabsStore = useTerminalTabsStore.getState();
+      tabsStore.registerTab("mem-tab", "/load-project", "claude");
+
+      await loadProjectFromDisk("/load-project");
+
+      const tabs = useTerminalTabsStore.getState().getTabsForProject("/load-project");
+      expect(tabs).toHaveLength(1);
+      expect(tabs[0].id).toBe("mem-tab");
     });
   });
 });

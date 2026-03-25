@@ -1,3 +1,5 @@
+import { stripAnsi } from "./strip-ansi";
+
 export type CliId = "claude" | "gemini" | "codex" | "cursor-agent" | "gh-copilot";
 export type SessionType = CliId | "terminal";
 
@@ -171,6 +173,7 @@ export function detectSessionId(sessionType: SessionType, data: string): string 
   if (sessionType === "terminal") return null;
   const def = CLI_REGISTRY[sessionType];
   if (!def?.sessionIdPattern) return null;
-  const match = data.match(def.sessionIdPattern);
+  const clean = stripAnsi(data);
+  const match = clean.match(def.sessionIdPattern);
   return match?.[1] ?? null;
 }

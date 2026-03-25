@@ -7,14 +7,11 @@ import { useTerminalTabsStore } from "./terminal-tabs";
 interface TilingLayoutState {
   model: Model;
   tabCount: number;
-  layoutByProject: Record<string, IJsonModel>;
   /** The node ID of the tab currently being renamed (inline-edit active), or null. */
   editingTabId: string | null;
 
   updateModel: (model: Model) => void;
   getModelJson: () => IJsonModel;
-  saveLayoutForProject: (projectPath: string) => void;
-  restoreLayoutForProject: (projectPath: string, validTerminalIds?: Set<string>) => void;
   addBlock: (config: BlockConfig, targetTabsetId?: string, nodeId?: string, dockLocation?: DockLocation) => void;
   removeBlock: (nodeId: string) => void;
   hasBlock: (nodeId: string) => boolean;
@@ -471,7 +468,6 @@ function syncTerminalTabRemoval(nodeId: string): void {
 export const useTilingLayoutStore = create<TilingLayoutState>((set, get) => ({
   model: Model.fromJson(DEFAULT_LAYOUT),
   tabCount: 0,
-  layoutByProject: {},
   editingTabId: null,
 
   updateModel: (model) => {
@@ -480,60 +476,6 @@ export const useTilingLayoutStore = create<TilingLayoutState>((set, get) => ({
   },
 
   getModelJson: () => get().model.toJson() as IJsonModel,
-
-  saveLayoutForProject: (projectPath) => {
-    const json = get().model.toJson() as IJsonModel;
-    set((state) => ({
-      layoutByProject: {
-        ...state.layoutByProject,
-        [projectPath]: json,
-      },
-    }));
-  },
-
-  restoreLayoutForProject: (projectPath, validTerminalIds) => {
-    const saved = get().layoutByProject[projectPath];
-    if (saved) {
-      // Strip orphan terminal/browser blocks from cached layout BEFORE
-      // building the model so they never render (prevents visible flash).
-      const sanitized = validTerminalIds
-        ? stripOrphanTerminalBlocksFromJson(saved, validTerminalIds)
-        : saved;
-
-      // Skip model replacement when the sanitized layout matches the current
-      // model's JSON — avoids a full FlexLayout re-render (and flicker)
-      // when switching back to a project whose layout hasn't changed.
-      const currentJson = get().model.toJson();
-      if (JSON.stringify(currentJson) === JSON.stringify(sanitized)) return;
-
-      try {
-        const cleaned = stripEmptyTabsetsFromJson(sanitized);
-        const model = Model.fromJson(cleaned);
-        removeEmptyTabsets(model);
-        unmaximizeEmptyTabsets(model);
-        enforceBlockMinWidths(model);
-        set({ model, tabCount: countTabs(model) });
-      } catch {
-        set({ model: Model.fromJson(DEFAULT_LAYOUT), tabCount: 0 });
-      }
-    } else {
-      // No saved layout for this project — keep structural blocks (file-tree,
-      // file-preview, plugin, etc.) but strip terminal/browser blocks that
-      // belong to the previous project.
-      const currentJson = get().model.toJson() as IJsonModel;
-      const stripped = stripProjectBlocksFromJson(currentJson);
-      try {
-        const cleaned = stripEmptyTabsetsFromJson(stripped);
-        const model = Model.fromJson(cleaned);
-        removeEmptyTabsets(model);
-        unmaximizeEmptyTabsets(model);
-        enforceBlockMinWidths(model);
-        set({ model, tabCount: countTabs(model) });
-      } catch {
-        set({ model: Model.fromJson(DEFAULT_LAYOUT), tabCount: 0 });
-      }
-    }
-  },
 
   addBlock: (config, targetTabsetId, nodeId, dockLocation) => {
     let { model } = get();

@@ -11,7 +11,6 @@ interface PluginsState {
   plugins: LoadedPlugin[];
   pluginOrder: string[];
   activePluginName: string | null;
-  activePluginNameByProject: Record<string, string | null>;
   permissionPrompt: PermissionPrompt | null;
   pluginBadges: Record<string, string>;
   loading: boolean;
@@ -27,8 +26,6 @@ interface PluginsState {
   grantPermissions: (pluginName: string, permissions: PluginPermission[]) => Promise<void>;
   denyPermissions: (pluginName: string, permissions: PluginPermission[]) => Promise<void>;
   dismissPermissionPrompt: () => void;
-  saveActivePluginForProject: (projectPath: string) => void;
-  restoreActivePluginForProject: (projectPath: string) => void;
   setPluginBadge: (pluginName: string, text: string) => void;
   pinPlugin: (name: string) => Promise<void>;
   unpinPlugin: () => Promise<void>;
@@ -48,7 +45,6 @@ export const usePluginsStore = create<PluginsState>((set, get) => ({
   plugins: [],
   pluginOrder: [],
   activePluginName: null,
-  activePluginNameByProject: {},
   permissionPrompt: null,
   pluginBadges: {},
   loading: false,
@@ -155,27 +151,6 @@ export const usePluginsStore = create<PluginsState>((set, get) => ({
 
   dismissPermissionPrompt: () => {
     set({ permissionPrompt: null });
-  },
-
-  saveActivePluginForProject: (projectPath: string) => {
-    const { activePluginName, activePluginNameByProject } = get();
-    set({
-      activePluginNameByProject: {
-        ...activePluginNameByProject,
-        [projectPath]: activePluginName,
-      },
-    });
-  },
-
-  restoreActivePluginForProject: (projectPath: string) => {
-    const { activePluginNameByProject, pinnedPluginName } = get();
-    // Pinned plugin always takes priority: it should be visible in every project
-    if (pinnedPluginName) {
-      set({ activePluginName: pinnedPluginName });
-      return;
-    }
-    const saved = activePluginNameByProject[projectPath];
-    set({ activePluginName: saved ?? null });
   },
 
   setPluginBadge: (pluginName: string, text: string) => {

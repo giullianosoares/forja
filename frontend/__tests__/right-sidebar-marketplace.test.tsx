@@ -35,8 +35,6 @@ describe("right-sidebar marketplace button", () => {
     useRightPanelStore.setState({
       isOpen: false,
       activeView: "empty",
-      isOpenByProject: {},
-      activeViewByProject: {},
     });
     usePluginsStore.setState({
       plugins: [],
@@ -46,7 +44,6 @@ describe("right-sidebar marketplace button", () => {
       pluginBadges: {},
       loading: false,
       permissionPrompt: null,
-      activePluginNameByProject: {},
     });
   });
 

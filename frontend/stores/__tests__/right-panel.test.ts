@@ -44,31 +44,6 @@ describe("useRightPanelStore", () => {
     expect(useRightPanelStore.getState().activeView).toBe("empty");
   });
 
-  it("saveStateForProject saves activeView per project", () => {
-    useRightPanelStore.setState({ isOpen: true, activeView: "plugin" });
-    useRightPanelStore.getState().saveStateForProject("/my/project");
-    const { isOpenByProject, activeViewByProject } =
-      useRightPanelStore.getState();
-    expect(isOpenByProject["/my/project"]).toBe(true);
-    expect(activeViewByProject["/my/project"]).toBe("plugin");
-  });
-
-  it("restoreStateForProject restores activeView per project", () => {
-    useRightPanelStore.setState({
-      activeViewByProject: { "/my/project": "plugin" },
-      isOpenByProject: { "/my/project": true },
-    });
-    useRightPanelStore.getState().restoreStateForProject("/my/project");
-    const { isOpen, activeView } = useRightPanelStore.getState();
-    expect(isOpen).toBe(true);
-    expect(activeView).toBe("plugin");
-  });
-
-  it("restoreStateForProject defaults activeView to empty when no saved state", () => {
-    useRightPanelStore.getState().restoreStateForProject("/unknown/project");
-    expect(useRightPanelStore.getState().activeView).toBe("empty");
-  });
-
   describe("closePanel - pinned plugin protection (Bug 1)", () => {
     beforeEach(() => {
       usePluginsStore.setState({ pinnedPluginName: null });
