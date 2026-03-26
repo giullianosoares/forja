@@ -421,6 +421,30 @@ export function TilingLayout() {
         }
       }
 
+      // --- Ctrl badge: show tab cycling order when Ctrl is held ---
+      const { visible: ctrlVisible, activeModifier: ctrlMod } = useModifierHeldStore.getState();
+      if (ctrlVisible && ctrlMod === "ctrl") {
+        const allTabIds: string[] = [];
+        useTilingLayoutStore.getState().model.visitNodes((n) => {
+          if (n.getType() === "tab") allTabIds.push(n.getId());
+        });
+        const tabIndex = allTabIds.indexOf(nodeId);
+        if (tabIndex >= 0) {
+          const isSelected = node.getParent()?.getSelectedNode()?.getId() === nodeId;
+          renderValues.leading = (
+            <div className="flex shrink-0 items-center gap-1.5">
+              {renderValues.leading}
+              <ShortcutBadge
+                label={String(tabIndex + 1)}
+                variant={isSelected ? "active" : "inactive"}
+                visible
+                className="shrink-0"
+              />
+            </div>
+          );
+        }
+      }
+
       // --- Content: name label with double-click handling ---
       const isRenamable = RENAMABLE_BLOCK_TYPES.has(component);
 
@@ -445,7 +469,7 @@ export function TilingLayout() {
         </span>
       );
     },
-    [sessionStates, isPinned, previewTabId],
+    [sessionStates, isPinned, previewTabId, modifierVisible, activeModifier],
   );
 
   const onContextMenu = useCallback(
