@@ -15,10 +15,15 @@ function isInputFocused(): boolean {
   if (!el) return false;
   const tag = el.tagName.toLowerCase();
   if (tag === "input" || tag === "select") return true;
-  // Textarea: allow xterm.js (uses hidden textarea for input capture)
-  if (tag === "textarea" && !el.closest(".xterm")) return true;
+  // Textarea: allow xterm.js and read-only Monaco (both use hidden textareas)
+  if (tag === "textarea") {
+    if (el.closest(".xterm")) return false; // xterm — allow badges
+    if ((el as HTMLTextAreaElement).readOnly) return false; // read-only Monaco — allow badges
+    return true; // editable textarea — block badges
+  }
   if ((el as HTMLElement).isContentEditable) return true;
-  if (el.closest(".monaco-editor")) return true;
+  // Monaco in edit mode: block badges. Read-only Monaco handled above via readonly textarea.
+  if (el.closest(".monaco-editor") && !(el as HTMLTextAreaElement).readOnly) return true;
   return false;
 }
 
