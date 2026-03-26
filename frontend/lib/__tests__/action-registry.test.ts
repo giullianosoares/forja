@@ -209,16 +209,17 @@ describe("getDynamicActions", () => {
     expect(action?.group).toBe("Plugins");
   });
 
-  it("returns empty array when no CLIs and no plugins", () => {
+  it("always includes terminal session even with no CLIs and no plugins", () => {
     const actions = getDynamicActions([], []);
-    expect(actions).toHaveLength(0);
+    expect(actions).toHaveLength(1);
+    expect(actions[0].id).toBe("session:terminal");
   });
 
-  it("combines CLI and plugin entries", () => {
+  it("combines CLI, terminal and plugin entries", () => {
     const clis = [{ id: "claude", displayName: "Claude Code" }];
     const plugins = [{ name: "git-graph", displayName: "Git Graph", icon: "git-branch" }];
     const actions = getDynamicActions(clis, plugins);
-    expect(actions).toHaveLength(2);
+    expect(actions).toHaveLength(3); // claude + terminal + git-graph
   });
 
   it("each dynamic action has required ActionRegistryEntry fields", () => {

@@ -221,9 +221,10 @@ describe("CommandPalette quick-actions mode", () => {
     render(<CommandPalette />);
 
     expect(screen.getByText("Panels & View")).toBeInTheDocument();
-    expect(screen.getByText("Terminal")).toBeInTheDocument();
+    expect(screen.getAllByText("Terminal").length).toBeGreaterThan(0);
     expect(screen.getByText("Git")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.getByText("Sessions")).toBeInTheDocument();
   });
 
   it("does not show Check icon for unpinned actions", () => {

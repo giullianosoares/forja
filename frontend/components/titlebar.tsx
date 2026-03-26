@@ -139,6 +139,7 @@ export function Titlebar() {
           </DropdownMenu>
         </div>
         <WorkspaceSwitcher />
+        <div className="mx-2 h-4 w-px bg-ctp-surface1" />
         <QuickActions />
       </div>
 

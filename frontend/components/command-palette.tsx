@@ -549,7 +549,7 @@ export function CommandPalette() {
               </CommandGroup>
             ))}
 
-            {currentPath && !clisLoading && (
+            {!clisLoading && (
               <CommandGroup heading="Sessions">
                 {installedClis.map((cli) => {
                   const pinnedCli = useQuickActionsStore.getState().isPinned(`session:${cli.id}`);
@@ -571,6 +571,25 @@ export function CommandPalette() {
                     </CommandItem>
                   );
                 })}
+                {(() => {
+                  const pinnedTerminal = useQuickActionsStore.getState().isPinned("session:terminal");
+                  return (
+                    <CommandItem
+                      key="qa-session-terminal"
+                      value="Session Terminal"
+                      onSelect={async () => {
+                        const store = useQuickActionsStore.getState();
+                        if (pinnedTerminal) await store.removeAction("session:terminal");
+                        else await store.addAction("session:terminal");
+                        close();
+                      }}
+                    >
+                      <TerminalSquare className="h-4 w-4 text-ctp-overlay1" strokeWidth={1.5} />
+                      Terminal
+                      {pinnedTerminal && <Check className="ml-auto h-3.5 w-3.5 text-ctp-green" strokeWidth={1.5} />}
+                    </CommandItem>
+                  );
+                })()}
               </CommandGroup>
             )}
 

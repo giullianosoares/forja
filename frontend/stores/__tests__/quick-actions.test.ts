@@ -34,12 +34,15 @@ describe("useQuickActionsStore", () => {
     expect(useQuickActionsStore.getState().loaded).toBe(true);
   });
 
-  it("loadActions defaults to empty array on error", async () => {
+  it("loadActions uses default actions on error", async () => {
     vi.mocked(invoke).mockRejectedValue(new Error("IPC error"));
 
     await useQuickActionsStore.getState().loadActions();
 
-    expect(useQuickActionsStore.getState().actions).toEqual([]);
+    expect(useQuickActionsStore.getState().actions).toEqual([
+      { actionId: "open-files" },
+      { actionId: "open-browser" },
+    ]);
     expect(useQuickActionsStore.getState().loaded).toBe(true);
   });
 

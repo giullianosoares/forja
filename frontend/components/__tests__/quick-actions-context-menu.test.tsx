@@ -42,6 +42,23 @@ vi.mock("@/lib/action-registry", () => ({
     };
     return actions[id];
   },
+  getDynamicActions: () => [],
+}));
+
+vi.mock("@/hooks/use-installed-clis", () => ({
+  useInstalledClis: () => ({ installedClis: [], loading: false }),
+}));
+
+vi.mock("@/stores/plugins", () => ({
+  usePluginsStore: (selector?: (s: unknown) => unknown) => {
+    const state = { plugins: {}, pluginOrder: [] };
+    return selector ? selector(state) : state;
+  },
+  getOrderedEnabledPlugins: () => [],
+}));
+
+vi.mock("@/lib/plugin-types", () => ({
+  getPluginIcon: () => null,
 }));
 
 // Quick actions store mock — getState() returns a stable object with mocked fns

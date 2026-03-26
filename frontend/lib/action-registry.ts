@@ -141,7 +141,17 @@ export function getDynamicActions(
     label: cli.displayName,
     icon: "terminal",
     group: "Session",
+    requiresProject: true,
   }));
+
+  // Always include the built-in terminal session
+  cliActions.push({
+    id: "session:terminal",
+    label: "Terminal",
+    icon: "terminal-square",
+    group: "Session",
+    requiresProject: true,
+  });
 
   const pluginActions: ActionRegistryEntry[] = enabledPlugins.map((plugin) => ({
     id: `plugin:${plugin.name}`,

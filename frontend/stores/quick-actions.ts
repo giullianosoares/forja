@@ -16,6 +16,11 @@ interface QuickActionsState {
   isPinned: (actionId: string) => boolean;
 }
 
+const DEFAULT_ACTIONS: QuickAction[] = [
+  { actionId: "open-files" },
+  { actionId: "open-browser" },
+];
+
 async function persistActions(actions: QuickAction[]): Promise<void> {
   await invoke("save_quick_actions", { actions });
 }
@@ -26,10 +31,16 @@ export const useQuickActionsStore = create<QuickActionsState>((set, get) => ({
 
   loadActions: async () => {
     try {
-      const actions = await invoke<QuickAction[]>("get_quick_actions");
-      set({ actions: actions ?? [], loaded: true });
+      const raw = await invoke<QuickAction[] | null>("get_quick_actions");
+      // null/undefined means never configured — use defaults
+      const actions = raw && raw.length > 0 ? raw : DEFAULT_ACTIONS;
+      set({ actions, loaded: true });
+      // Persist defaults if first time
+      if (!raw || raw.length === 0) {
+        await persistActions(actions);
+      }
     } catch {
-      set({ actions: [], loaded: true });
+      set({ actions: DEFAULT_ACTIONS, loaded: true });
     }
   },
 
