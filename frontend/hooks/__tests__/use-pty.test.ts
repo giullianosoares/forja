@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { usePty } from "../use-pty";
+import { usePty, resolveMissingSessionIds } from "../use-pty";
 import { ptyDispatcher } from "@/lib/pty-dispatcher";
 import { useTerminalTabsStore } from "@/stores/terminal-tabs";
 
@@ -52,6 +52,11 @@ describe("usePty", () => {
     vi.mocked(ptyDispatcher.registerExit).mockClear();
     vi.mocked(ptyDispatcher.unregisterExit).mockClear();
     mockInvoke.mockResolvedValue(undefined);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("starts with isRunning as false", () => {
@@ -300,61 +305,198 @@ describe("usePty", () => {
     });
   });
 
-  describe("spawn triggers filesystem session detection for Claude", () => {
+  describe("lazy filesystem session detection via interval", () => {
     beforeEach(() => {
       useTerminalTabsStore.setState({
         tabs: [
           {
-            id: "tab-fs",
+            id: "tab-lazy",
             name: "Claude Code",
             path: "/test/project",
             isRunning: true,
             sessionType: "claude",
           },
         ],
-        activeTabId: "tab-fs",
+        activeTabId: "tab-lazy",
       });
     });
 
-    it("calls get_cli_sessions before and polls after spawn for Claude", async () => {
-      // First call: get_cli_sessions to snapshot existing sessions (before spawn)
-      mockInvoke
-        .mockResolvedValueOnce([{ sessionId: "old-session-1", modified: "2024-01-01" }]) // get_cli_sessions (snapshot)
-        .mockResolvedValueOnce("tab-fs") // spawn_pty
-        .mockResolvedValueOnce([ // get_cli_sessions (poll — returns new session)
-          { sessionId: "new-session-abc", modified: "2024-01-02" },
-          { sessionId: "old-session-1", modified: "2024-01-01" },
-        ]);
-
-      const { result } = renderHook(() => usePty({ tabId: "tab-fs" }));
-
-      await act(async () => {
-        await result.current.spawn("/test/project", "claude");
+    it("detects session ID from filesystem on interval tick", async () => {
+      mockInvoke.mockImplementation((channel: string) => {
+        if (channel === "get_cli_sessions") {
+          return Promise.resolve([
+            { sessionId: "new-session-abc", modified: "2024-01-02" },
+          ]);
+        }
+        return Promise.resolve(undefined);
       });
 
-      // Wait for the async filesystem detection to complete
+      renderHook(() => usePty({ tabId: "tab-lazy" }));
+
+      // Advance past the interval
       await act(async () => {
-        await vi.waitFor(() => {
-          const tab = useTerminalTabsStore.getState().tabs.find((t) => t.id === "tab-fs");
-          expect(tab?.cliSessionId).toBe("new-session-abc");
-        }, { timeout: 5000 });
+        vi.advanceTimersByTime(10_000);
       });
+
+      // Allow the async invoke to resolve
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      const tab = useTerminalTabsStore.getState().tabs.find((t) => t.id === "tab-lazy");
+      expect(tab?.cliSessionId).toBe("new-session-abc");
     });
 
-    it("skips filesystem detection when resumeArgs are provided", async () => {
-      mockInvoke.mockResolvedValueOnce("tab-fs"); // spawn_pty only — no get_cli_sessions calls
-
-      const { result } = renderHook(() => usePty({ tabId: "tab-fs" }));
-
-      await act(async () => {
-        await result.current.spawn("/test/project", "claude", ["--resume", "existing-id"]);
+    it("stops polling once session ID is set", async () => {
+      let callCount = 0;
+      mockInvoke.mockImplementation((channel: string) => {
+        if (channel === "get_cli_sessions") {
+          callCount++;
+          return Promise.resolve([
+            { sessionId: "session-xyz", modified: "2024-01-02" },
+          ]);
+        }
+        return Promise.resolve(undefined);
       });
 
-      // Should NOT have called get_cli_sessions
-      const cliSessionsCalls = mockInvoke.mock.calls.filter(
+      renderHook(() => usePty({ tabId: "tab-lazy" }));
+
+      // First tick: should detect and set
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      const firstCount = callCount;
+      expect(firstCount).toBe(1);
+
+      // Second tick: should skip because cliSessionId is now set
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(callCount).toBe(firstCount);
+    });
+
+    it("does not poll for terminal tabs", async () => {
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-term",
+            name: "Terminal",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "terminal",
+          },
+        ],
+        activeTabId: "tab-term",
+      });
+
+      renderHook(() => usePty({ tabId: "tab-term" }));
+
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      const cliSessionCalls = mockInvoke.mock.calls.filter(
         (c) => c[0] === "get_cli_sessions"
       );
-      expect(cliSessionsCalls).toHaveLength(0);
+      expect(cliSessionCalls).toHaveLength(0);
+    });
+
+    it("clears interval on unmount", () => {
+      const { unmount } = renderHook(() => usePty({ tabId: "tab-lazy" }));
+
+      unmount();
+
+      // Advance timers — no calls should happen after unmount
+      mockInvoke.mockClear();
+      vi.advanceTimersByTime(30_000);
+
+      const cliSessionCalls = mockInvoke.mock.calls.filter(
+        (c) => c[0] === "get_cli_sessions"
+      );
+      expect(cliSessionCalls).toHaveLength(0);
+    });
+  });
+
+  describe("resolveMissingSessionIds", () => {
+    it("resolves session ID for Claude tabs without one", async () => {
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-resolve",
+            name: "Claude Code",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "claude",
+          },
+        ],
+        activeTabId: "tab-resolve",
+      });
+
+      mockInvoke.mockResolvedValueOnce([
+        { sessionId: "resolved-session-123", modified: "2024-01-02" },
+      ]);
+
+      await resolveMissingSessionIds("/test/project");
+
+      const tab = useTerminalTabsStore.getState().tabs.find((t) => t.id === "tab-resolve");
+      expect(tab?.cliSessionId).toBe("resolved-session-123");
+    });
+
+    it("skips tabs that already have a cliSessionId", async () => {
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-has-id",
+            name: "Claude Code",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "claude",
+            cliSessionId: "existing-id",
+          },
+        ],
+        activeTabId: "tab-has-id",
+      });
+
+      await resolveMissingSessionIds("/test/project");
+
+      // Should not have called get_cli_sessions
+      const cliSessionCalls = mockInvoke.mock.calls.filter(
+        (c) => c[0] === "get_cli_sessions"
+      );
+      expect(cliSessionCalls).toHaveLength(0);
+    });
+
+    it("skips terminal tabs", async () => {
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-terminal",
+            name: "Terminal",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "terminal",
+          },
+        ],
+        activeTabId: "tab-terminal",
+      });
+
+      await resolveMissingSessionIds("/test/project");
+
+      const cliSessionCalls = mockInvoke.mock.calls.filter(
+        (c) => c[0] === "get_cli_sessions"
+      );
+      expect(cliSessionCalls).toHaveLength(0);
     });
   });
 });
