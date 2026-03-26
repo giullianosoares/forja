@@ -242,41 +242,14 @@ describe("RightSidebar", () => {
     expect(mockSetActivePlugin).toHaveBeenCalledWith("active-plugin");
   });
 
-  it("renders browser icon even without active project", () => {
-    render(<RightSidebar />);
-    expect(screen.getByLabelText("Browser")).toBeTruthy();
-  });
-
   it("renders marketplace button even without active project", () => {
     render(<RightSidebar />);
     expect(screen.getByLabelText("Marketplace")).toBeTruthy();
   });
 
-  it("opens browser block when browser icon is clicked", () => {
+  it("does not render browser icon (moved to topbar quick actions)", () => {
     render(<RightSidebar hasProject />);
-    fireEvent.click(screen.getByLabelText("Browser"));
-    expect(mockAddBlock).toHaveBeenCalledWith(
-      { type: "browser", url: "https://github.com/nandomoreirame/forja" },
-      undefined,
-      expect.stringMatching(/^browser-/),
-    );
-  });
-
-  it("creates a new browser block on each click", () => {
-    render(<RightSidebar hasProject />);
-    fireEvent.click(screen.getByLabelText("Browser"));
-    fireEvent.click(screen.getByLabelText("Browser"));
-    expect(mockAddBlock).toHaveBeenCalledTimes(2);
-    const firstId = mockAddBlock.mock.calls[0][2];
-    const secondId = mockAddBlock.mock.calls[1][2];
-    expect(firstId).not.toBe(secondId);
-  });
-
-  it("browser button has consistent styling regardless of active browser blocks", () => {
-    mockHasBlockOfType.mockImplementation((type: string) => type === "browser");
-    render(<RightSidebar hasProject />);
-    const btn = screen.getByLabelText("Browser");
-    expect(btn.className).toContain("text-ctp-overlay1");
+    expect(screen.queryByLabelText("Browser")).toBeNull();
   });
 
   it("renders global-scope plugin even without active project", () => {

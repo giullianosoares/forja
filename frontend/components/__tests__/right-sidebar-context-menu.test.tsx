@@ -285,15 +285,9 @@ describe("RightSidebar - Plugin Context Menu", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  it("does not show context menu for browser icon", async () => {
-    const user = userEvent.setup();
+  it("browser icon is not rendered (moved to topbar quick actions)", () => {
     render(<RightSidebar hasProject />);
-
-    const browserBtn = screen.getByLabelText("Browser");
-    await user.pointer({ target: browserBtn, keys: "[MouseRight]" });
-
-    // Browser icon should not have a context menu
-    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.queryByLabelText("Browser")).toBeNull();
   });
 
   it("shows 'Uninstall plugin' option in context menu", async () => {

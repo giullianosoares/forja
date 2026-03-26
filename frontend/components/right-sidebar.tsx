@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef } from "react";
-import { CircleHelp, Globe, Pin, PinOff, Plus, Puzzle, Settings, Trash2 } from "lucide-react";
+import { useCallback, useMemo } from "react";
+import { CircleHelp, Pin, PinOff, Plus, Puzzle, Settings, Trash2 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -179,14 +179,6 @@ export function RightSidebar({ hasProject = false }: RightSidebarProps) {
 
   const activeView = useRightPanelStore((s) => s.activeView);
 
-  const browserCounterRef = useRef(0);
-  const handleBrowserClick = useCallback(() => {
-    const tiling = useTilingLayoutStore.getState();
-    browserCounterRef.current += 1;
-    const blockId = `browser-${Date.now().toString(36)}-${browserCounterRef.current}`;
-    tiling.addBlock({ type: "browser", url: "https://github.com/nandomoreirame/forja" }, undefined, blockId);
-  }, []);
-
   const handleMarketplaceClick = useCallback(() => {
     const tiling = useTilingLayoutStore.getState();
     const blockId = "block-marketplace";
@@ -211,28 +203,6 @@ export function RightSidebar({ hasProject = false }: RightSidebarProps) {
         data-testid="right-sidebar"
         className="flex h-full w-12 shrink-0 flex-col items-center gap-1.5 bg-ctp-mantle py-2"
       >
-        {/* Browser icon (built-in, always visible) */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label="Browser"
-              onClick={handleBrowserClick}
-              className="flex h-9 w-9 items-center justify-center rounded-md transition-colors text-ctp-overlay1 hover:bg-ctp-surface0 hover:text-ctp-text"
-            >
-              <Globe className="h-4 w-4" strokeWidth={1.5} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="left">
-            <p>Browser</p>
-          </TooltipContent>
-        </Tooltip>
-
-        {/* Divider between built-in icons and installed plugins */}
-        {visiblePlugins.length > 0 && (
-          <div className="mx-auto h-px w-6 bg-ctp-surface1" />
-        )}
-
         {/* Plugin icons (global always, project only with active project) */}
         {visiblePlugins.length > 0 && (
           <DndContext
