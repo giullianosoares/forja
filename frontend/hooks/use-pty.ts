@@ -52,12 +52,39 @@ function getUsedSessionIds(projectPath: string, sessionType: string): Set<string
 }
 
 /**
+ * Returns the first session from `sessions` that:
+ *  1. Is not already assigned to another tab of the same CLI type.
+ *  2. Was modified AFTER the tab's `createdAt` timestamp (when set).
+ *     This prevents a brand-new tab from picking up an old session that
+ *     existed on disk before the tab was even created.
+ *     Tabs restored from disk have no `createdAt`, so this filter is skipped.
+ */
+function findAvailableSession(
+  sessions: CliSessionEntry[],
+  projectPath: string,
+  sessionType: string,
+  createdAt?: number,
+): CliSessionEntry | undefined {
+  const used = getUsedSessionIds(projectPath, sessionType);
+  return sessions.find((s) => {
+    if (used.has(s.sessionId)) return false;
+    // For new tabs (createdAt is set), only accept sessions modified after
+    // the tab was created.  This avoids assigning stale filesystem sessions.
+    if (createdAt && s.modified) {
+      const sessionTime = new Date(s.modified).getTime();
+      if (sessionTime < createdAt) return false;
+    }
+    return true;
+  });
+}
+
+/**
  * Resolves missing session IDs for tabs that use filesystem-based detection.
  * Called as a safety net before saving project state to disk.
  *
  * For each tab with sessionDirType and no cliSessionId, fetches recent
  * sessions from the filesystem and assigns the first one not already in use
- * by another tab.
+ * by another tab and (for new tabs) created after the tab itself.
  */
 export async function resolveMissingSessionIds(projectPath: string): Promise<void> {
   const store = useTerminalTabsStore.getState();
@@ -76,9 +103,7 @@ export async function resolveMissingSessionIds(projectPath: string): Promise<voi
         projectPath,
         limit: 10,
       });
-      // Pick the first session not already claimed by another tab
-      const used = getUsedSessionIds(projectPath, tab.sessionType);
-      const available = sessions.find((s) => !used.has(s.sessionId));
+      const available = findAvailableSession(sessions, projectPath, tab.sessionType, tab.createdAt);
       if (available) {
         store.setCliSessionId(tab.id, available.sessionId);
       }
@@ -156,10 +181,9 @@ export function usePty(options: UsePtyOptions) {
           // Re-check: another poll or PTY detection may have set it
           const freshTab = store.tabs.find((t) => t.id === tabId);
           if (freshTab && !freshTab.cliSessionId) {
-            // Skip sessions already assigned to other tabs to avoid
-            // resuming a different tab's session
-            const used = getUsedSessionIds(tab.path, tab.sessionType);
-            const available = sessions.find((s) => !used.has(s.sessionId));
+            const available = findAvailableSession(
+              sessions, tab.path, tab.sessionType, freshTab.createdAt,
+            );
             if (available) {
               store.setCliSessionId(tabId, available.sessionId);
               persistSessionIdToDisk(tab.path);

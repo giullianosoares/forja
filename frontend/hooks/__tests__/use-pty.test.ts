@@ -610,5 +610,90 @@ describe("usePty", () => {
       );
       expect(tab?.cliSessionId).toBeUndefined();
     });
+
+    it("rejects sessions older than tab createdAt for new tabs", async () => {
+      const tabCreatedAt = new Date("2026-03-25T12:00:00Z").getTime();
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-new",
+            name: "Claude Code",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "claude",
+            createdAt: tabCreatedAt,
+          },
+        ],
+        activeTabId: "tab-new",
+      });
+
+      mockInvoke.mockResolvedValueOnce([
+        // This session was modified BEFORE the tab was created
+        { sessionId: "old-session", modified: "2026-03-25T11:00:00Z" },
+      ]);
+
+      await resolveMissingSessionIds("/test/project");
+
+      const tab = useTerminalTabsStore.getState().tabs.find(
+        (t) => t.id === "tab-new"
+      );
+      expect(tab?.cliSessionId).toBeUndefined();
+    });
+
+    it("accepts sessions newer than tab createdAt for new tabs", async () => {
+      const tabCreatedAt = new Date("2026-03-25T12:00:00Z").getTime();
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-new",
+            name: "Claude Code",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "claude",
+            createdAt: tabCreatedAt,
+          },
+        ],
+        activeTabId: "tab-new",
+      });
+
+      mockInvoke.mockResolvedValueOnce([
+        // This session was modified AFTER the tab was created
+        { sessionId: "new-session", modified: "2026-03-25T13:00:00Z" },
+      ]);
+
+      await resolveMissingSessionIds("/test/project");
+
+      const tab = useTerminalTabsStore.getState().tabs.find(
+        (t) => t.id === "tab-new"
+      );
+      expect(tab?.cliSessionId).toBe("new-session");
+    });
+
+    it("accepts any session for restored tabs without createdAt", async () => {
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-restored",
+            name: "Claude Code",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "claude",
+            // No createdAt — restored from disk
+          },
+        ],
+        activeTabId: "tab-restored",
+      });
+
+      mockInvoke.mockResolvedValueOnce([
+        { sessionId: "old-session", modified: "2020-01-01T00:00:00Z" },
+      ]);
+
+      await resolveMissingSessionIds("/test/project");
+
+      const tab = useTerminalTabsStore.getState().tabs.find(
+        (t) => t.id === "tab-restored"
+      );
+      expect(tab?.cliSessionId).toBe("old-session");
+    });
   });
 });

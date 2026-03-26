@@ -43,6 +43,7 @@ describe("useTerminalTabsStore", () => {
       path: "/test/path",
       isRunning: true,
       sessionType: "claude",
+      createdAt: expect.any(Number),
     });
     expect(state.activeTabId).toBe(tabId);
   });

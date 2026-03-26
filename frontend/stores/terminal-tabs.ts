@@ -17,6 +17,9 @@ export interface TerminalTab {
   customName?: string;
   /** Detected CLI session ID for resume. Set when the CLI reports its session ID via output parsing. */
   cliSessionId?: string;
+  /** Epoch ms when this tab was created. Used by session detection to ignore
+   *  filesystem sessions that existed before the tab was spawned. */
+  createdAt?: number;
 }
 
 interface TerminalTabsState {
@@ -76,6 +79,7 @@ export const useTerminalTabsStore = create<TerminalTabsState>((set, get) => ({
       path,
       isRunning: true,
       sessionType,
+      createdAt: Date.now(),
       ...(customName ? { customName } : {}),
     };
     set((state) => ({
