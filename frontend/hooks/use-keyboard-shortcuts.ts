@@ -264,6 +264,23 @@ export function useKeyboardShortcuts({
 
         return;
       }
+      // ⌘+1-9 — switch to tab by position (global tab order)
+      if (mod && !event.shiftKey && !event.altKey && digitMatch) {
+        event.preventDefault();
+        const tabIndex = parseInt(digitMatch[1], 10) - 1;
+        const allTabIds: string[] = [];
+        tilingStore.model.visitNodes((node) => {
+          if (node.getType() === "tab") allTabIds.push(node.getId());
+        });
+        if (tabIndex < allTabIds.length) {
+          const targetTabId = allTabIds[tabIndex];
+          tilingStore.selectTab(targetTabId);
+          requestAnimationFrame(() => {
+            paneFocusRegistry.focus(targetTabId);
+          });
+        }
+        return;
+      }
       // Alt+N — jump to next project with pending notification
       if (event.altKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === "n") {
         event.preventDefault();

@@ -64,6 +64,12 @@ describe("modifier detection logic", () => {
     expect(combo).toBe("cmd-alt");
   });
 
+  it("bare Cmd sets cmd", () => {
+    const e = makeKeyEvent("keydown", { metaKey: true, key: "Meta" });
+    const combo = detectModifierCombo(e);
+    expect(combo).toBe("cmd");
+  });
+
   it("returns null for non-modifier keys", () => {
     const e = makeKeyEvent("keydown", { key: "a", code: "KeyA" });
     const combo = detectModifierCombo(e);

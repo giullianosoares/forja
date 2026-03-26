@@ -3,8 +3,12 @@ import { useModifierHeldStore, type ModifierCombo } from "@/stores/modifier-held
 
 export function detectModifierCombo(e: KeyboardEvent): ModifierCombo | null {
   const mod = e.metaKey || e.ctrlKey;
+  // Most specific combos first
   if (mod && e.shiftKey && !e.altKey) return "cmd-shift";
   if (mod && e.altKey && !e.shiftKey) return "cmd-alt";
+  // Bare Cmd/Meta (macOS) — without Shift/Alt/Ctrl alongside
+  if (e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) return "cmd";
+  // Bare Ctrl (for Ctrl+Tab cycling on macOS)
   if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) return "ctrl";
   if (e.altKey && !e.metaKey && !e.shiftKey && !e.ctrlKey) return "alt";
   return null;

@@ -421,9 +421,9 @@ export function TilingLayout() {
         }
       }
 
-      // --- Ctrl badge: show tab cycling order when Ctrl is held ---
+      // --- Tab number badge: show when Cmd or Ctrl is held (Cmd+N or Ctrl+Tab) ---
       const { visible: ctrlVisible, activeModifier: ctrlMod } = useModifierHeldStore.getState();
-      if (ctrlVisible && ctrlMod === "ctrl") {
+      if (ctrlVisible && (ctrlMod === "cmd" || ctrlMod === "ctrl")) {
         const allTabIds: string[] = [];
         useTilingLayoutStore.getState().model.visitNodes((n) => {
           if (n.getType() === "tab") allTabIds.push(n.getId());
