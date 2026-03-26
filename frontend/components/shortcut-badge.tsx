@@ -27,8 +27,8 @@ export function ShortcutBadge({ label, variant, visible, className }: ShortcutBa
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex items-center justify-center rounded font-mono text-[9px] font-bold leading-none",
-        "min-w-[14px] px-[3px] py-[1px]",
+        "inline-flex items-center justify-center rounded-full font-mono text-[9px] font-bold leading-none",
+        "h-[14px] min-w-[14px] px-[2px]",
         VARIANT_CLASSES[variant],
         visible ? "opacity-100" : "opacity-0",
         className,
