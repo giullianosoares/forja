@@ -24,6 +24,7 @@ type ModifierCombo = "cmd-shift" | "ctrl" | "alt" | "cmd-alt";
 interface ModifierHeldState {
   activeModifier: ModifierCombo | null;
   visible: boolean; // true after 200ms delay
+  cancelBadges: () => void; // clears activeModifier + cancels pending timer
 }
 ```
 
@@ -34,17 +35,22 @@ interface ModifierHeldState {
 - If a full shortcut completes (e.g., ⌘+Shift+1) in <200ms → timer is cancelled, badges never appear
 
 **Detection rules:**
-- `metaKey && shiftKey && !altKey` → `"cmd-shift"`
-- `ctrlKey && !metaKey && !shiftKey && !altKey` → `"ctrl"` (macOS only; on Linux/Windows Ctrl is the meta key, handled accordingly)
+
+The codebase uses `mod` = `event.metaKey || event.ctrlKey` for cross-platform compatibility. Detection mirrors this:
+
+- `(metaKey || ctrlKey) && shiftKey && !altKey` → `"cmd-shift"`
+- `ctrlKey && !metaKey && !shiftKey && !altKey` → `"ctrl"` (on macOS, bare Ctrl without Cmd; on Linux/Windows, Ctrl is the primary mod key so this combo doesn't apply — Ctrl+Tab uses different detection)
 - `altKey && !metaKey && !shiftKey && !ctrlKey` → `"alt"`
-- `metaKey && altKey && !shiftKey` → `"cmd-alt"`
+- `(metaKey || ctrlKey) && altKey && !shiftKey` → `"cmd-alt"`
+
+Priority: if multiple combos match, the most specific wins (e.g., `cmd-shift` over bare `ctrl`).
 
 ### Hook: `useModifierHeld`
 
 A hook at `frontend/hooks/use-modifier-held.ts` that:
 1. Registers `keydown`/`keyup` listeners on `window`
 2. Handles `blur` event (clears state when window loses focus)
-3. Ignores events when focus is on `input`, `textarea`, `select`, or Monaco editor
+3. Ignores events when focus is on `input`, `textarea`, `select`, `contentEditable` elements, or Monaco editor
 4. Manages the 200ms activation timer
 5. Updates the Zustand store
 
@@ -60,16 +66,17 @@ interface ShortcutBadgeProps {
   variant: "active" | "inactive" | "notification" | "direction-active" | "direction-inactive";
   visible: boolean;
 }
+// Renders with aria-hidden="true" — badges are decorative/transient
 ```
 
 **Variants and colors:**
 | Variant | Background | Text | Use case |
 |---------|-----------|------|----------|
 | `active` | `bg-ctp-mauve` | `text-ctp-base` | Current/active project, active pane arrows |
-| `inactive` | `bg-ctp-overlay0` | `text-ctp-text` | Other projects, sidebar icons, tabs |
+| `inactive` | `bg-ctp-surface2` | `text-ctp-text` | Other projects, sidebar icons, tabs |
 | `notification` | `bg-ctp-green` | `text-ctp-base` | Alt+N notification badge |
 | `direction-active` | `bg-ctp-mauve` | `text-ctp-base` | Arrows from the active pane |
-| `direction-inactive` | `bg-ctp-surface1` | `text-ctp-subtext0` | Arrows on adjacent panes |
+| `direction-inactive` | `bg-ctp-surface2` | `text-ctp-subtext1` | Arrows on adjacent panes |
 
 **CSS transitions:**
 ```css
@@ -123,7 +130,9 @@ Only projects with active notifications show the badge. Projects without notific
 |-----------|-------|----------|---------|
 | Workspace switcher items | `1`-`9` | inline left of workspace name | `active` for current, `inactive` for others |
 
-**New keyboard shortcut to implement:** `⌘+Alt+1-9` switches to workspace by position. The workspace switcher popover briefly opens to show badges when this modifier is held.
+**New keyboard shortcut to implement:** `⌘+Alt+1-9` switches to workspace by position (excluding `⌘+Alt+0` which is already bound to `resetZoom()`). The workspace switcher popover briefly opens to show badges when this modifier is held.
+
+**Note:** Holding `⌘+Alt` for 200ms will show workspace badges even if the user intends to press V (split vertical), H (split horizontal), or F (focus mode). This is acceptable — the badges are non-intrusive and disappear on the next keypress. The 200ms delay already prevents flickering for fast combos.
 
 ## Timing Specification
 
@@ -161,7 +170,7 @@ keydown (modifier)
 - Render directional arrow badges on appropriate edges
 - Active pane gets `direction-active` variant, neighbors get `direction-inactive`
 
-### `frontend/components/terminal-session.tsx` (or tab bar component)
+### `frontend/components/tab-bar.tsx`
 - Read `useModifierHeldStore` for `ctrl`
 - Render numbered badges following global tab cycling order
 
@@ -171,16 +180,16 @@ keydown (modifier)
 - Implement new `⌘+Alt+1-9` shortcut in `use-keyboard-shortcuts.ts`
 
 ### `frontend/hooks/use-keyboard-shortcuts.ts`
-- Add `⌘+Alt+1-9` handler for workspace switching
-- When a shortcut completes, dispatch a "shortcut-executed" action to cancel badge display
+- Add `⌘+Alt+1-9` handler for workspace switching (use `event.code` / `Digit1-Digit9` for reliable detection, same pattern as project switching)
+- When a shortcut completes, call `useModifierHeldStore.getState().cancelBadges()` to immediately clear `activeModifier` and cancel the 200ms timer if pending
 
 ### `frontend/App.tsx`
 - Mount `useModifierHeld` hook
 
 ## Edge Cases
 
-- **Window blur**: Clear all state immediately when window loses focus (modifier may still be physically held but app can't detect keyup)
-- **Input focus**: Do not show badges when focus is on `input`, `textarea`, `select`, or Monaco editor elements
+- **Window blur / visibilitychange**: Clear all state immediately when window loses focus or becomes hidden (modifier may still be physically held but app can't detect keyup). On `focus` return, do not auto-resume — user must release and re-press the modifier.
+- **Input focus**: Do not show badges when focus is on `input`, `textarea`, `select`, `contentEditable` elements, or Monaco editor
 - **Projects > 9**: Projects at position 10+ do not receive badges (shortcut supports 1-9 only)
 - **No adjacent pane**: Arrow badges only appear on edges where an adjacent pane exists
 - **Single pane**: No directional badges shown when only one pane exists
