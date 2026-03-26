@@ -227,8 +227,17 @@ describe("usePty", () => {
   });
 
   describe("session ID detection via PTY regex (CLIs without filesystem detection)", () => {
-    beforeEach(() => {
-      // Use gemini (has sessionIdPattern but NO sessionDirType) to test regex detection
+    // All current CLIs with sessionIdPattern also have sessionDirType,
+    // so PTY regex detection is skipped for them. We temporarily remove
+    // sessionDirType from gemini's registry entry to test the regex path.
+    let originalSessionDirType: string | undefined;
+
+    beforeEach(async () => {
+      const { CLI_REGISTRY } = await import("@/lib/cli-registry");
+      originalSessionDirType = CLI_REGISTRY.gemini.sessionDirType;
+      // biome-ignore lint: test-only mutation to exercise regex detection path
+      (CLI_REGISTRY.gemini as Record<string, unknown>).sessionDirType = undefined;
+
       useTerminalTabsStore.setState({
         tabs: [
           {
@@ -241,6 +250,12 @@ describe("usePty", () => {
         ],
         activeTabId: "tab-gemini",
       });
+    });
+
+    afterEach(async () => {
+      const { CLI_REGISTRY } = await import("@/lib/cli-registry");
+      // biome-ignore lint: restore original value after test
+      (CLI_REGISTRY.gemini as Record<string, unknown>).sessionDirType = originalSessionDirType;
     });
 
     it("detects session ID from ANSI-wrapped PTY output", () => {
@@ -497,6 +512,103 @@ describe("usePty", () => {
         (c) => c[0] === "get_cli_sessions"
       );
       expect(cliSessionCalls).toHaveLength(0);
+    });
+
+    it("passes cliId to get_cli_sessions IPC call", async () => {
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-gemini-resolve",
+            name: "Gemini CLI",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "gemini",
+          },
+        ],
+        activeTabId: "tab-gemini-resolve",
+      });
+
+      mockInvoke.mockResolvedValueOnce([
+        { sessionId: "gem-session-1", modified: "2026-01-01T00:00:00Z" },
+      ]);
+
+      await resolveMissingSessionIds("/test/project");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_cli_sessions", {
+        cliId: "gemini",
+        projectPath: "/test/project",
+        limit: 10,
+      });
+    });
+
+    it("skips session IDs already assigned to other tabs of the same CLI type", async () => {
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-claude-1",
+            name: "Claude Code",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "claude",
+            cliSessionId: "session-already-used",
+          },
+          {
+            id: "tab-claude-2",
+            name: "Claude Code",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "claude",
+            // No cliSessionId — needs detection
+          },
+        ],
+        activeTabId: "tab-claude-2",
+      });
+
+      mockInvoke.mockResolvedValueOnce([
+        { sessionId: "session-already-used", modified: "2026-01-02T00:00:00Z" },
+        { sessionId: "session-new", modified: "2026-01-01T00:00:00Z" },
+      ]);
+
+      await resolveMissingSessionIds("/test/project");
+
+      const tab = useTerminalTabsStore.getState().tabs.find(
+        (t) => t.id === "tab-claude-2"
+      );
+      expect(tab?.cliSessionId).toBe("session-new");
+    });
+
+    it("does not assign session ID when all sessions are already in use", async () => {
+      useTerminalTabsStore.setState({
+        tabs: [
+          {
+            id: "tab-claude-1",
+            name: "Claude Code",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "claude",
+            cliSessionId: "only-session",
+          },
+          {
+            id: "tab-claude-2",
+            name: "Claude Code",
+            path: "/test/project",
+            isRunning: true,
+            sessionType: "claude",
+          },
+        ],
+        activeTabId: "tab-claude-2",
+      });
+
+      mockInvoke.mockResolvedValueOnce([
+        { sessionId: "only-session", modified: "2026-01-01T00:00:00Z" },
+      ]);
+
+      await resolveMissingSessionIds("/test/project");
+
+      const tab = useTerminalTabsStore.getState().tabs.find(
+        (t) => t.id === "tab-claude-2"
+      );
+      expect(tab?.cliSessionId).toBeUndefined();
     });
   });
 });

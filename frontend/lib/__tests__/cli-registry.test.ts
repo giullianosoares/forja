@@ -402,8 +402,8 @@ describe("resumeFlag field", () => {
     expect(CLI_REGISTRY.gemini.resumeFlag).toBe("--resume");
   });
 
-  it("codex has resumeFlag set to '--resume'", () => {
-    expect(CLI_REGISTRY.codex.resumeFlag).toBe("--resume");
+  it("codex has resumeFlag set to 'resume' (subcommand style)", () => {
+    expect(CLI_REGISTRY.codex.resumeFlag).toBe("resume");
   });
 
   it("cursor-agent uses '--resume=' flag format", () => {
@@ -697,5 +697,45 @@ describe("computeTabDisplayNames", () => {
       expect(names["t9"]).toBe("Claude Code #2");
       expect(names["t15"]).toBe("Claude Code #3");
     });
+  });
+});
+
+describe("sessionDirType field", () => {
+  it("claude uses 'claude-dir' for filesystem-based session detection", () => {
+    expect(CLI_REGISTRY.claude.sessionDirType).toBe("claude-dir");
+  });
+
+  it("gemini uses 'gemini-dir' for filesystem-based session detection", () => {
+    expect(CLI_REGISTRY.gemini.sessionDirType).toBe("gemini-dir");
+  });
+
+  it("codex uses 'codex-dir' for filesystem-based session detection", () => {
+    expect(CLI_REGISTRY.codex.sessionDirType).toBe("codex-dir");
+  });
+
+  it("cursor-agent uses 'cursor-dir' for filesystem-based session detection", () => {
+    expect(CLI_REGISTRY["cursor-agent"].sessionDirType).toBe("cursor-dir");
+  });
+
+  it("gh-copilot has no sessionDirType (no local session storage)", () => {
+    expect(CLI_REGISTRY["gh-copilot"].sessionDirType).toBeUndefined();
+  });
+});
+
+describe("resumeIdType field", () => {
+  it("gemini uses 'latest' resumeIdType (always passes --resume latest)", () => {
+    expect(CLI_REGISTRY.gemini.resumeIdType).toBe("latest");
+  });
+
+  it("claude defaults to undefined resumeIdType (uses session ID directly)", () => {
+    expect(CLI_REGISTRY.claude.resumeIdType).toBeUndefined();
+  });
+
+  it("codex defaults to undefined resumeIdType (uses session ID directly)", () => {
+    expect(CLI_REGISTRY.codex.resumeIdType).toBeUndefined();
+  });
+
+  it("cursor-agent defaults to undefined resumeIdType (uses session ID directly)", () => {
+    expect(CLI_REGISTRY["cursor-agent"].resumeIdType).toBeUndefined();
   });
 });
