@@ -100,13 +100,9 @@ interface ShortcutBadgeProps {
 | Component | Badge | Position | Variant |
 |-----------|-------|----------|---------|
 | Project sidebar icons | `1`-`9` | bottom-right of icon | `active` for current, `inactive` for others |
-| Right sidebar: File Explorer | `E` | bottom-right of icon | `inactive` |
-| Right sidebar: Browser | `B` | bottom-right of icon | `inactive` |
-| Right sidebar: Git Changes | `G` | bottom-right of icon | `inactive` |
-| New tab button area | `T` | inline next to + | `inactive` |
-| Active pane | `→` `←` `↑` `↓` | edge facing adjacent pane | `direction-active` |
-| Adjacent panes | `←` `→` `↑` `↓` | edge facing active pane | `direction-inactive` |
-| Fullscreen toggle | `F` | near fullscreen control | `inactive` |
+| Active pane | `→` `←` `↑` `↓` | tabset header buttons | `direction-active` |
+
+**Note:** The File Explorer (E), Browser (B), Git Changes (G), Fullscreen (F), and New Tab (T) shortcuts are discoverable through the command palette and keyboard shortcuts dialog. They don't map to persistent UI elements that could display badges — they toggle blocks in the tiling layout. Adding badges for these would require a floating HUD overlay, which is out of scope for v1. The directional arrows on panes already provide the key "spatial navigation" discovery.
 
 ### Ctrl
 
