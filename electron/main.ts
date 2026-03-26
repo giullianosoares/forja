@@ -10,6 +10,7 @@ import {
   clipboard,
   dialog,
   ipcMain,
+  Menu,
   session,
   shell,
   webContents,
@@ -247,6 +248,64 @@ app.on("web-contents-created", (_event, contents) => {
         if (!win.isDestroyed()) {
           win.webContents.send("webview:shortcut-forwarded", payload);
         }
+      }
+    });
+
+    // Native context menu for browser pane webviews
+    contents.on("context-menu", (_e, params) => {
+      const menuItems: Electron.MenuItemConstructorOptions[] = [];
+
+      if (params.selectionText) {
+        menuItems.push(
+          { label: "Copy", role: "copy" },
+          { type: "separator" },
+        );
+      }
+
+      if (params.isEditable) {
+        menuItems.push(
+          { label: "Cut", role: "cut" },
+          { label: "Copy", role: "copy" },
+          { label: "Paste", role: "paste" },
+          { type: "separator" },
+          { label: "Select All", role: "selectAll" },
+          { type: "separator" },
+        );
+      }
+
+      if (params.linkURL) {
+        menuItems.push(
+          {
+            label: "Open Link in New Tab",
+            click: () => { shell.openExternal(params.linkURL); },
+          },
+          {
+            label: "Copy Link Address",
+            click: () => { clipboard.writeText(params.linkURL); },
+          },
+          { type: "separator" },
+        );
+      }
+
+      if (params.srcURL && (params.mediaType === "image" || params.mediaType === "video")) {
+        menuItems.push(
+          {
+            label: "Copy Image Address",
+            click: () => { clipboard.writeText(params.srcURL); },
+          },
+          { type: "separator" },
+        );
+      }
+
+      menuItems.push(
+        { label: "Back", enabled: contents.canGoBack(), click: () => { contents.goBack(); } },
+        { label: "Forward", enabled: contents.canGoForward(), click: () => { contents.goForward(); } },
+        { label: "Reload", click: () => { contents.reload(); } },
+      );
+
+      if (menuItems.length > 0) {
+        const menu = Menu.buildFromTemplate(menuItems);
+        menu.popup({ window: BrowserWindow.getFocusedWindow() ?? undefined });
       }
     });
   }
@@ -708,6 +767,14 @@ ipcMain.handle("pty:clean-stale-buffers", async (_event, args: { projectPath: st
   bp.cleanStaleBuffers(args.projectPath, args.activeTabIds);
 });
 
+// Host info (for session status bar)
+ipcMain.handle("get_session_host_info", () => {
+  return {
+    hostname: os.hostname(),
+    username: os.userInfo().username,
+  };
+});
+
 // Git info
 ipcMain.handle("get_git_info_command", async (_event, args: { path: string }) => {
   const gitInfo = await getGitInfo();
@@ -1034,6 +1101,14 @@ ipcMain.handle("browser:screenshot", async (_event, args: { webContentsId: numbe
   if (!wc) throw new Error(`WebContents not found for id: ${args.webContentsId}`);
   const image = await wc.capturePage();
   clipboard.writeImage(image);
+  return { success: true };
+});
+
+// Open DevTools for a specific browser pane webview
+ipcMain.handle("browser:open-devtools", (_event, args: { webContentsId: number }) => {
+  const wc = webContents.fromId(args.webContentsId);
+  if (!wc) throw new Error(`WebContents not found for id: ${args.webContentsId}`);
+  wc.openDevTools();
   return { success: true };
 });
 
