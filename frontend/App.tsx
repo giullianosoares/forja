@@ -38,6 +38,7 @@ import { useTerminalTabsStore } from "./stores/terminal-tabs";
 import { useTilingLayoutStore } from "./stores/tiling-layout";
 import { useTerminalZoomStore } from "./stores/terminal-zoom";
 import { useUserSettingsStore } from "./stores/user-settings";
+import { useQuickActionsStore } from "./stores/quick-actions";
 import { useThemeStore } from "./stores/theme";
 import type { ThemeDefinition } from "@/themes";
 import { applyBackgroundOpacity } from "@/themes/apply";
@@ -46,6 +47,7 @@ import { useProjectsStore, saveCurrentProjectToDisk } from "./stores/projects";
 import { useWorkspaceStore } from "./stores/workspace";
 
 import { usePluginsStore } from "./stores/plugins";
+import { useRightPanelStore } from "./stores/right-panel";
 import { useFocusModeStore } from "./stores/focus-mode";
 import { PluginPermissionDialog } from "./components/plugin-permission-dialog";
 import { FocusModeIndicator } from "./components/focus-mode-indicator";
@@ -203,6 +205,12 @@ function App({
     useWorkspaceStore.getState().loadWorkspaces().then(() => {
       setWorkspacesLoaded(true);
       useProjectsStore.getState().loadProjects();
+      // Register the primary window's workspace in the dedup map so that
+      // open_workspace_in_new_window focuses this window instead of duplicating.
+      const wsId = useWorkspaceStore.getState().activeWorkspaceId;
+      if (wsId) {
+        invoke("register_window_workspace", { workspaceId: wsId }).catch(() => {});
+      }
     });
   }, [initialWorkspaceId]);
 
@@ -444,6 +452,7 @@ function App({
   // Load user settings on mount and listen for changes
   useEffect(() => {
     useUserSettingsStore.getState().loadSettings();
+    useQuickActionsStore.getState().loadActions();
 
     const unlisten = listen<import("@/lib/settings-types").UserSettings>(
       "settings:changed",
@@ -726,8 +735,9 @@ function App({
     tilingTabCount,
   ]);
 
-  // Safety net: save active project's UI state on window close.
-  // Non-active projects were already saved to disk when the user switched away.
+  // Save active project's UI state on window close.
+  // Uses already-imported stores to avoid async dynamic imports — the IPC
+  // message must be enqueued synchronously before the window closes.
   useEffect(() => {
     if (initialWorkspaceId) return;
 
@@ -735,10 +745,28 @@ function App({
       const activeProjectPath = useProjectsStore.getState().activeProjectPath;
       if (!activeProjectPath) return;
 
-      // Fire-and-forget — beforeunload is synchronous, but IPC is async.
-      // This is a best-effort save; the reactive persist effect above handles
-      // most saves already.
-      saveCurrentProjectToDisk(activeProjectPath).catch(() => {});
+      const wsId = useWorkspaceStore.getState().activeWorkspaceId;
+      if (!wsId) return;
+
+      const tabsStore = useTerminalTabsStore.getState();
+      const tilingStore = useTilingLayoutStore.getState();
+
+      // Fire-and-forget: invoke enqueues the IPC message synchronously,
+      // so the main process receives it even though we can't await the response.
+      invoke("save_project_ui_state", {
+        workspaceId: wsId,
+        path: activeProjectPath,
+        state: {
+          sidebarOpen: useFileTreeStore.getState().isOpen,
+          rightPanelOpen: useRightPanelStore.getState().isOpen,
+          rightPanelActiveView: useRightPanelStore.getState().activeView,
+          terminalFullscreen: tabsStore.isTerminalFullscreen,
+          previewFile: useFilePreviewStore.getState().currentFile,
+          activePluginName: usePluginsStore.getState().activePluginName,
+          layoutJson: tilingStore.getModelJson() as Record<string, unknown>,
+          ...tabsStore.serializeTabsForSave(activeProjectPath),
+        },
+      }).catch(() => {});
     };
 
     window.addEventListener("beforeunload", handler);

@@ -24,6 +24,7 @@ import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog";
 import { SettingsDialog } from "./settings-dialog";
 import { ResourceUsagePopover } from "./resource-usage-popover";
 import { WorkspaceSwitcher } from "./workspace-switcher";
+import { QuickActions } from "./quick-actions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -138,6 +139,7 @@ export function Titlebar() {
           </DropdownMenu>
         </div>
         <WorkspaceSwitcher />
+        <QuickActions />
       </div>
 
       <span

@@ -1,21 +1,20 @@
-import { useAppDialogsStore } from "@/stores/app-dialogs";
 import { useCommandPaletteStore } from "@/stores/command-palette";
 import { useUserSettingsStore } from "@/stores/user-settings";
 import { useFilePreviewStore } from "@/stores/file-preview";
 import { useFileTreeStore } from "@/stores/file-tree";
 import { useTerminalTabsStore } from "@/stores/terminal-tabs";
-import { useTerminalZoomStore } from "@/stores/terminal-zoom";
-import { useGitDiffStore } from "@/stores/git-diff";
-import { useGitStatusStore } from "@/stores/git-status";
 import { useThemeStore } from "@/stores/theme";
 import { useTilingLayoutStore } from "@/stores/tiling-layout";
 import { useProjectsStore } from "@/stores/projects";
-import { useFocusModeStore } from "@/stores/focus-mode";
 import { usePluginsStore, getOrderedEnabledPlugins } from "@/stores/plugins";
+import { useQuickActionsStore } from "@/stores/quick-actions";
 import { getPluginIcon } from "@/lib/plugin-types";
 import { flattenFileTree } from "@/lib/flatten-file-tree";
-import { invoke } from "@/lib/ipc";
+import { getActionsByGroup } from "@/lib/action-registry";
+import { executeAction } from "@/lib/action-executor";
+import * as allIcons from "lucide-react";
 import {
+  Check,
   ChevronsDownUp,
   Eraser,
   FolderOpen,
@@ -37,7 +36,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { useInstalledClis } from "@/hooks/use-installed-clis";
 import { CliIcon } from "./cli-icon";
 import { FileIcon } from "./file-icon";
@@ -54,6 +53,14 @@ import {
 
 import { MOD_KEY } from "@/lib/platform";
 const mod = MOD_KEY;
+
+function getIconByName(iconName: string): React.ComponentType<{ className?: string; strokeWidth?: number }> {
+  const pascalCase = iconName
+    .split("-")
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join("");
+  return (allIcons as Record<string, React.ComponentType<{ className?: string; strokeWidth?: number }>>)[pascalCase] ?? allIcons.CircleDot;
+}
 
 export function CommandPalette() {
   const { isOpen, mode, close, open } = useCommandPaletteStore();
@@ -105,42 +112,18 @@ export function CommandPalette() {
     close();
   };
 
-  const browserCounterRef = useRef(0);
-
   const handleOpenFiles = () => {
-    const tilingStore = useTilingLayoutStore.getState();
-    if (!tilingStore.hasBlock("tab-file-tree")) {
-      const tree = useFileTreeStore.getState().tree;
-      const projectName = tree?.root.name;
-      tilingStore.addBlock(
-        { type: "file-tree", projectName },
-        undefined,
-        "tab-file-tree",
-      );
-    }
+    executeAction("open-files");
     close();
   };
 
   const handleOpenBrowser = () => {
-    const tilingStore = useTilingLayoutStore.getState();
-    browserCounterRef.current += 1;
-    const blockId = `browser-${Date.now().toString(36)}-${browserCounterRef.current}`;
-    tilingStore.addBlock(
-      { type: "browser", url: "https://github.com/nandomoreirame/forja" },
-      undefined,
-      blockId,
-    );
+    executeAction("open-browser");
     close();
   };
 
-  const handleOpenPlugin = (pluginName: string, displayName?: string, icon?: string) => {
-    const tilingStore = useTilingLayoutStore.getState();
-    const blockId = `plugin-${pluginName}`;
-    tilingStore.addBlock(
-      { type: "plugin", pluginName, pluginDisplayName: displayName, pluginIcon: icon },
-      undefined,
-      blockId,
-    );
+  const handleOpenPlugin = (pluginName: string) => {
+    executeAction(`plugin:${pluginName}`);
     close();
   };
 
@@ -150,78 +133,22 @@ export function CommandPalette() {
   };
 
   const handleCommand = (command: string) => {
-    switch (command) {
-      case "new-session":
-        if (!useFileTreeStore.getState().currentPath) {
-          close();
-          return;
-        }
-        open("sessions");
-        return; // return early to avoid close()
-      case "go-to-project":
-        open("projects");
-        return; // return early to avoid close()
-      case "open-project":
-        useFileTreeStore.getState().openProject();
-        break;
-      case "keyboard-shortcuts":
-        useAppDialogsStore.getState().setShortcutsOpen(true);
-        break;
-      case "about":
-        useAppDialogsStore.getState().setAboutOpen(true);
-        break;
-      case "open-settings":
-        useUserSettingsStore.getState().openSettingsEditor();
-        useFilePreviewStore.getState().openPreview();
-        break;
-      case "collapse-all":
-        useFileTreeStore.getState().collapseAll();
-        break;
-      case "zoom-in":
-        useTerminalZoomStore.getState().zoomIn();
-        break;
-      case "zoom-out":
-        useTerminalZoomStore.getState().zoomOut();
-        break;
-      case "zoom-reset":
-        useTerminalZoomStore.getState().resetZoom();
-        break;
-      case "git-changes": {
-        const projectPath = useFileTreeStore.getState().currentPath;
-        if (!projectPath) break;
-        const diffState = useGitDiffStore.getState();
-        const files =
-          diffState.changedFilesByProject[projectPath] ?? [];
-        if (files.length === 0) break;
-        useFilePreviewStore.getState().openPreview();
-        const targetPath =
-          diffState.selectedProjectPath === projectPath &&
-          diffState.selectedPath
-            ? diffState.selectedPath
-            : files[0].path;
-        diffState.selectChangedFile(projectPath, targetPath);
-        break;
+    // Special cases that change command palette mode (don't close)
+    if (command === "new-session") {
+      if (!useFileTreeStore.getState().currentPath) {
+        close();
+        return;
       }
-      case "toggle-focus-mode":
-        useFocusModeStore.getState().toggleFocusMode();
-        break;
-      case "toggle-diff-mode": {
-        const diff = useGitDiffStore.getState();
-        diff.setDiffMode(diff.diffMode === "split" ? "unified" : "split");
-        break;
-      }
-      case "refresh-git": {
-        const path = useFileTreeStore.getState().currentPath;
-        if (path) useGitStatusStore.getState().forceFetchStatuses(path);
-        break;
-      }
-      case "dev-reload":
-        window.location.reload();
-        return; // no close() needed — page reloads
-      case "dev-clear-cache":
-        invoke("app:clearCache").catch(() => {});
-        return; // no close() needed — page reloads after cache clear
+      open("sessions");
+      return;
     }
+    if (command === "go-to-project") {
+      open("projects");
+      return;
+    }
+
+    // Delegate to centralized executor
+    executeAction(command);
     close();
   };
 
@@ -237,7 +164,9 @@ export function CommandPalette() {
                 ? "Select theme..."
                 : mode === "projects"
                   ? "Go to project..."
-                  : "Type a command..."
+                  : mode === "quick-actions"
+                    ? "Add quick action..."
+                    : "Type a command..."
         }
       />
       <CommandList>
@@ -250,7 +179,9 @@ export function CommandPalette() {
                 ? "No themes found."
                 : mode === "projects"
                   ? "No projects found."
-                  : "No commands found."}
+                  : mode === "quick-actions"
+                    ? "No actions found."
+                    : "No commands found."}
         </CommandEmpty>
 
         {mode === "files" && (
@@ -470,13 +401,7 @@ export function CommandPalette() {
                     <CommandItem
                       key={plugin.manifest.name}
                       value={`plugin-${plugin.manifest.name}`}
-                      onSelect={() =>
-                        handleOpenPlugin(
-                          plugin.manifest.name,
-                          plugin.manifest.displayName,
-                          plugin.manifest.icon,
-                        )
-                      }
+                      onSelect={() => handleOpenPlugin(plugin.manifest.name)}
                     >
                       <Icon className="h-4 w-4" strokeWidth={1.5} />
                       {plugin.manifest.displayName}
@@ -589,6 +514,91 @@ export function CommandPalette() {
                 Developer: Clear Cache
               </CommandItem>
             </CommandGroup>
+          </>
+        )}
+
+        {mode === "quick-actions" && (
+          <>
+            {Object.entries(getActionsByGroup()).map(([groupName, actions]) => (
+              <CommandGroup key={groupName} heading={groupName}>
+                {actions.map((action) => {
+                  const Icon = getIconByName(action.icon);
+                  const pinned = useQuickActionsStore.getState().isPinned(action.id);
+                  return (
+                    <CommandItem
+                      key={action.id}
+                      value={action.label}
+                      onSelect={async () => {
+                        const store = useQuickActionsStore.getState();
+                        if (pinned) {
+                          await store.removeAction(action.id);
+                        } else {
+                          await store.addAction(action.id);
+                        }
+                        close();
+                      }}
+                    >
+                      <Icon className="h-4 w-4" strokeWidth={1.5} />
+                      {action.label}
+                      {pinned && (
+                        <Check className="ml-auto h-3.5 w-3.5 text-ctp-green" strokeWidth={1.5} />
+                      )}
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            ))}
+
+            {currentPath && !clisLoading && (
+              <CommandGroup heading="Sessions">
+                {installedClis.map((cli) => {
+                  const pinnedCli = useQuickActionsStore.getState().isPinned(`session:${cli.id}`);
+                  return (
+                    <CommandItem
+                      key={`qa-session-${cli.id}`}
+                      value={`Session ${cli.displayName}`}
+                      onSelect={async () => {
+                        const store = useQuickActionsStore.getState();
+                        const actionId = `session:${cli.id}`;
+                        if (pinnedCli) await store.removeAction(actionId);
+                        else await store.addAction(actionId);
+                        close();
+                      }}
+                    >
+                      <CliIcon sessionType={cli.id as SessionType} className="h-4 w-4" />
+                      {cli.displayName}
+                      {pinnedCli && <Check className="ml-auto h-3.5 w-3.5 text-ctp-green" strokeWidth={1.5} />}
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            )}
+
+            {enabledPlugins.length > 0 && (
+              <CommandGroup heading="Plugins">
+                {enabledPlugins.map((plugin) => {
+                  const Icon = getPluginIcon(plugin.manifest.icon) ?? Puzzle;
+                  const pinnedPlugin = useQuickActionsStore.getState().isPinned(`plugin:${plugin.manifest.name}`);
+                  return (
+                    <CommandItem
+                      key={`qa-plugin-${plugin.manifest.name}`}
+                      value={`Plugin ${plugin.manifest.displayName}`}
+                      onSelect={async () => {
+                        const store = useQuickActionsStore.getState();
+                        const actionId = `plugin:${plugin.manifest.name}`;
+                        if (pinnedPlugin) await store.removeAction(actionId);
+                        else await store.addAction(actionId);
+                        close();
+                      }}
+                    >
+                      <Icon className="h-4 w-4" strokeWidth={1.5} />
+                      {plugin.manifest.displayName}
+                      {pinnedPlugin && <Check className="ml-auto h-3.5 w-3.5 text-ctp-green" strokeWidth={1.5} />}
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            )}
           </>
         )}
       </CommandList>

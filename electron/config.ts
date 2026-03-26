@@ -97,6 +97,7 @@ interface ConfigSchema {
   enabledPlugins: string[];
   pluginOrder: string[];
   pinnedPlugin: string | null;
+  quickActions: Array<{ actionId: string }>;
 }
 
 const DEFAULT_UI_PREFERENCES: UiPreferences = {
@@ -129,6 +130,7 @@ const store = new Store<ConfigSchema>({
     enabledPlugins: [],
     pluginOrder: [],
     pinnedPlugin: null,
+    quickActions: [],
   },
 }) as TypedConfigStore;
 
@@ -679,6 +681,17 @@ export function clearUiCache(): void {
     }),
   }));
   store.set("workspaces", cleaned);
+}
+
+// ─── Quick Actions ───────────────────────────────────────────────────────────
+
+export function getQuickActions(): Array<{ actionId: string }> {
+  const raw = (store as unknown as { get(key: string): unknown }).get("quickActions");
+  return Array.isArray(raw) ? (raw as Array<{ actionId: string }>) : [];
+}
+
+export function saveQuickActions(actions: Array<{ actionId: string }>): void {
+  (store as unknown as { set(key: string, value: unknown): void }).set("quickActions", actions);
 }
 
 // ─── Test Helpers (only for use in tests) ────────────────────────────────────
