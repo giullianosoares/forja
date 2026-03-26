@@ -33,6 +33,7 @@ export const TERMINAL_OPTIONS: ITerminalOptions = {
   letterSpacing: 0,
   cursorBlink: true,
   cursorStyle: "block",
+  cursorInactiveStyle: "none",
   scrollback: 10000,
   allowProposedApi: true,
 };

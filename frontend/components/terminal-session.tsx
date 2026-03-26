@@ -122,6 +122,10 @@ export const TerminalSession = memo(function TerminalSession({ tabId, path, isVi
         fitAddon = cached.fitAddon;
         hostElement = cached.hostElement;
         containerRef.current.appendChild(hostElement);
+        // Force xterm to re-render the full viewport after DOM reattachment.
+        // While parked, xterm wrote data to a detached DOM — the renderer's
+        // internal state may be stale, causing garbled text without this.
+        terminal.refresh(0, terminal.rows - 1);
         shouldSpawn = false; // PTY already running
         spawned = true; // treat as already started so park works on next unmount
       } else {
@@ -272,17 +276,7 @@ export const TerminalSession = memo(function TerminalSession({ tabId, path, isVi
             }
 
             // Check if this is a restored session that had already exited.
-            // If so, just show the buffer without spawning a new process.
             const tab = useTerminalTabsStore.getState().tabs?.find(t => t.id === tabId);
-            if (tab && !tab.isRunning) {
-              // Session had ended before app restart — auto-close for AI CLIs
-              if (sessionType && sessionType !== "terminal") {
-                setTimeout(() => {
-                  useTerminalTabsStore.getState().removeTab(tabId);
-                }, 500);
-              }
-              return;
-            }
 
             // Build resume args if we have a stored session ID
             let resumeArgs: string[] | undefined;
@@ -290,18 +284,43 @@ export const TerminalSession = memo(function TerminalSession({ tabId, path, isVi
             if (cliSessionId && sessionType && sessionType !== "terminal") {
               const def = CLI_REGISTRY[sessionType];
               if (def?.resumeFlag) {
-                // Handle both "--resume SESSION_ID" and "--resume=SESSION_ID" formats
+                const resumeValue =
+                  def.resumeIdType === "latest" ? "latest" : cliSessionId;
                 if (def.resumeFlag.endsWith("=")) {
-                  resumeArgs = [`${def.resumeFlag}${cliSessionId}`];
+                  resumeArgs = [`${def.resumeFlag}${resumeValue}`];
                 } else {
-                  resumeArgs = [def.resumeFlag, cliSessionId];
+                  resumeArgs = [def.resumeFlag, resumeValue];
                 }
+              }
+            }
+
+            // If the session exited before app restart and has no resume ID,
+            // auto-close AI CLI tabs (plain terminals stay with their buffer).
+            if (tab && !tab.isRunning) {
+              if (resumeArgs) {
+                // Resumable session — mark as running and proceed to spawn with --resume
+                useTerminalTabsStore.getState().markTabRunning(tab.id);
+              } else if (sessionType && sessionType !== "terminal") {
+                setTimeout(() => {
+                  useTerminalTabsStore.getState().removeTab(tabId);
+                }, 500);
+                return;
+              } else {
+                return;
               }
             }
 
             await spawn(path, sessionType, resumeArgs);
             if (!aborted) {
               resize(rows, cols);
+              // Hide xterm.js hardware cursor for AI CLI sessions.
+              // TUI frameworks (Ink) render their own visual cursor in the
+              // input field; the real terminal cursor sits at the PTY's last
+              // write position (usually the bottom), causing a phantom
+              // second cursor.  DECTCEM hide keeps only the TUI cursor.
+              if (sessionType && sessionType !== "terminal") {
+                terminal.write("\x1b[?25l");
+              }
               // Clean up persisted buffer after successful spawn
               invoke("pty:delete-persisted-buffer", { projectPath: path, tabId }).catch(() => {});
             }
@@ -345,10 +364,14 @@ export const TerminalSession = memo(function TerminalSession({ tabId, path, isVi
       resizeObserver?.disconnect();
       dataDisposable?.dispose();
 
-      // Cancel pending write-coalescing RAF and discard buffered data
+      // Cancel pending write-coalescing RAF and flush buffered data to terminal
+      // so no escape sequences are lost during the unmount transition.
       if (writeRafRef.current) {
         cancelAnimationFrame(writeRafRef.current);
         writeRafRef.current = 0;
+      }
+      if (writeBufferRef.current && terminalLocal) {
+        terminalLocal.write(writeBufferRef.current);
       }
       writeBufferRef.current = "";
 

@@ -62,6 +62,7 @@ interface ProjectIconProps {
   color: string;
   isThinking?: boolean;
   isNotified?: boolean;
+  notificationMessage?: string;
 }
 
 function ProjectIcon({
@@ -74,6 +75,7 @@ function ProjectIcon({
   color,
   isThinking,
   isNotified,
+  notificationMessage,
 }: ProjectIconProps) {
   const showSpinner = !isActive && !!isThinking;
   const showBadge = !isActive && !!isNotified;
@@ -122,7 +124,7 @@ function ProjectIcon({
       {showBadge && (
         <span
           data-testid={`session-badge-${project.path}`}
-          className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-ctp-green ring-1 ring-ctp-mantle"
+          className="absolute -bottom-0.5 -right-0.5 h-3 w-3 animate-pulse rounded-full bg-ctp-green ring-1 ring-ctp-mantle"
           aria-label={`${project.name} session finished`}
         />
       )}
@@ -172,6 +174,9 @@ function ProjectIcon({
       <TooltipContent side="right" className="max-w-xs">
         <p className="font-semibold">{project.name}</p>
         <p className="text-app-sm text-ctp-overlay1">{project.path}</p>
+        {isNotified && notificationMessage && (
+          <p className="text-app-sm text-ctp-green">{notificationMessage}</p>
+        )}
       </TooltipContent>
     </Tooltip>
   );
@@ -230,6 +235,7 @@ export function ProjectSidebar({ onOpenProject }: ProjectSidebarProps) {
     getProjectColor,
     thinkingProjects,
     notifiedProjects,
+    notificationMessages,
     removeProject,
     updateProject,
     reorderProjects,
@@ -305,12 +311,29 @@ export function ProjectSidebar({ onOpenProject }: ProjectSidebarProps) {
     [projects, reorderProjects]
   );
 
-  const handleRemoveConfirm = useCallback(() => {
+  const handleRemoveConfirm = useCallback(async () => {
     if (!removingProject) return;
-    removeProject(removingProject.path);
-    useFileTreeStore.getState().removeProjectTree(removingProject.path);
+    const removedPath = removingProject.path;
+    const wasActive = removedPath === activeProjectPath;
+
+    // Compute the next active project before removal
+    const remaining = projects.filter((p) => p.path !== removedPath);
+    const nextActive = wasActive ? (remaining[0]?.path ?? null) : null;
+
+    removeProject(removedPath);
+    useFileTreeStore.getState().removeProjectTree(removedPath);
     setRemovingProject(null);
-  }, [removingProject, removeProject]);
+
+    // Clean up terminal tabs for the removed project
+    const { useTerminalTabsStore } = await import("@/stores/terminal-tabs");
+    useTerminalTabsStore.getState().cleanupProjectState(removedPath);
+
+    // When the active project was removed, switchToProject restores the
+    // new active project's layout/tabs/panels and resets isSwitchingProject.
+    if (wasActive && nextActive) {
+      await switchToProject(nextActive);
+    }
+  }, [removingProject, removeProject, activeProjectPath, projects, switchToProject]);
 
   return (
     <TooltipProvider delayDuration={500}>
@@ -341,6 +364,7 @@ export function ProjectSidebar({ onOpenProject }: ProjectSidebarProps) {
                 color={getProjectColor(project.name)}
                 isThinking={thinkingProjects?.has(project.path)}
                 isNotified={notifiedProjects?.has(project.path)}
+                notificationMessage={notificationMessages?.[project.path]}
               />
             ))}
           </SortableContext>

@@ -5,24 +5,18 @@ type ActiveView = "empty" | "plugin" | "marketplace";
 
 interface RightPanelState {
   isOpen: boolean;
-  isOpenByProject: Record<string, boolean>;
   activeView: ActiveView;
-  activeViewByProject: Record<string, ActiveView>;
   togglePanel: () => void;
   /** Closes the panel only if no plugin is pinned. When a plugin is pinned, the
    * panel must remain open so the pinned plugin stays visible. Use this instead
    * of togglePanel() in resize callbacks to enforce the invariant. */
   closePanel: () => void;
   setActiveView: (view: ActiveView) => void;
-  saveStateForProject: (projectPath: string) => void;
-  restoreStateForProject: (projectPath: string) => void;
 }
 
-export const useRightPanelStore = create<RightPanelState>((set, get) => ({
+export const useRightPanelStore = create<RightPanelState>((set, _get) => ({
   isOpen: false,
-  isOpenByProject: {},
   activeView: "empty",
-  activeViewByProject: {},
 
   togglePanel: () =>
     set((state) => {
@@ -41,25 +35,4 @@ export const useRightPanelStore = create<RightPanelState>((set, get) => ({
   },
 
   setActiveView: (view: ActiveView) => set({ activeView: view }),
-
-  saveStateForProject: (projectPath: string) => {
-    const { isOpen, isOpenByProject, activeView, activeViewByProject } = get();
-    set({
-      isOpenByProject: { ...isOpenByProject, [projectPath]: isOpen },
-      activeViewByProject: {
-        ...activeViewByProject,
-        [projectPath]: activeView,
-      },
-    });
-  },
-
-  restoreStateForProject: (projectPath: string) => {
-    const { isOpenByProject, activeViewByProject } = get();
-    const savedOpen = isOpenByProject[projectPath];
-    const savedView = activeViewByProject[projectPath];
-    set({
-      isOpen: savedOpen ?? false,
-      activeView: savedView ?? "empty",
-    });
-  },
 }));

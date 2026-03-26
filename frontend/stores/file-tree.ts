@@ -83,7 +83,6 @@ interface FileTreeState {
   expandedPaths: Record<string, boolean>;
   trees: Record<string, DirectoryTree>;
   activeProjectPath: string | null;
-  isOpenByProject: Record<string, boolean>;
   focusedPath: string | null;
   selectedPaths: Record<string, boolean>;
   renamingPath: string | null;
@@ -91,6 +90,7 @@ interface FileTreeState {
   creatingType: "file" | "dir" | null;
   clipboard: { paths: string[]; operation: "copy" | "cut" } | null;
   pendingDeletePaths: string[] | null;
+  isOpenByProject: Record<string, boolean>;
 
   toggleSidebar: () => void;
   setFocusedPath: (path: string | null) => void;
@@ -154,7 +154,6 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => {
     expandedPaths: {},
     trees: {},
     activeProjectPath: null,
-    isOpenByProject: {},
     focusedPath: null,
     selectedPaths: {},
     renamingPath: null,
@@ -162,6 +161,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => {
     creatingType: null,
     clipboard: null,
     pendingDeletePaths: null,
+    isOpenByProject: {},
 
     toggleSidebar: () => set((state) => ({ isOpen: !state.isOpen })),
     setFocusedPath: (path) => set({ focusedPath: path }),

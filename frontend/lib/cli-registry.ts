@@ -1,3 +1,5 @@
+import { stripAnsi } from "./strip-ansi";
+
 export type CliId = "claude" | "gemini" | "codex" | "cursor-agent" | "gh-copilot";
 export type SessionType = CliId | "terminal";
 
@@ -11,6 +13,14 @@ export interface CliDefinition {
   chatSupported: boolean;
   resumeFlag?: string;           // e.g. "--resume"
   sessionIdPattern?: RegExp;     // regex to extract session ID from PTY output
+  /** When set, session IDs are detected from the filesystem instead of PTY output. */
+  sessionDirType?: "claude-dir" | "gemini-dir" | "codex-dir" | "cursor-dir";
+  /**
+   * Controls how the session ID is passed to --resume:
+   * - "id" (default): pass the session ID directly (Claude, Codex, Cursor)
+   * - "latest": always pass "latest" regardless of stored session ID (Gemini)
+   */
+  resumeIdType?: "id" | "latest";
 }
 
 export const TERMINAL_ICON = "./images/terminal.svg";
@@ -26,6 +36,7 @@ export const CLI_REGISTRY: Record<CliId, CliDefinition> = {
     chatSupported: true,
     resumeFlag: "--resume",
     sessionIdPattern: /session:\s+([a-f0-9-]+)/i,
+    sessionDirType: "claude-dir",
   },
   gemini: {
     id: "gemini",
@@ -37,6 +48,8 @@ export const CLI_REGISTRY: Record<CliId, CliDefinition> = {
     chatSupported: true,
     resumeFlag: "--resume",
     sessionIdPattern: /session[:\s]+([a-zA-Z0-9_-]+)/i,
+    sessionDirType: "gemini-dir",
+    resumeIdType: "latest",
   },
   codex: {
     id: "codex",
@@ -46,8 +59,9 @@ export const CLI_REGISTRY: Record<CliId, CliDefinition> = {
     iconColor: "text-ctp-green",
     icon: "./images/openai.svg",
     chatSupported: true,
-    resumeFlag: "--resume",
+    resumeFlag: "resume",
     sessionIdPattern: /session[:\s]+([a-zA-Z0-9_-]+)/i,
+    sessionDirType: "codex-dir",
   },
   "cursor-agent": {
     id: "cursor-agent",
@@ -59,6 +73,7 @@ export const CLI_REGISTRY: Record<CliId, CliDefinition> = {
     chatSupported: true,
     resumeFlag: "--resume=",
     sessionIdPattern: /chat[:\s]+([a-zA-Z0-9_-]+)/i,
+    sessionDirType: "cursor-dir",
   },
   "gh-copilot": {
     id: "gh-copilot",
@@ -171,6 +186,7 @@ export function detectSessionId(sessionType: SessionType, data: string): string 
   if (sessionType === "terminal") return null;
   const def = CLI_REGISTRY[sessionType];
   if (!def?.sessionIdPattern) return null;
-  const match = data.match(def.sessionIdPattern);
+  const clean = stripAnsi(data);
+  const match = clean.match(def.sessionIdPattern);
   return match?.[1] ?? null;
 }

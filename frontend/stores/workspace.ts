@@ -5,6 +5,7 @@ import { parseLayoutJson } from "@/lib/layout-migration";
 import { useFileTreeStore } from "./file-tree";
 import { useProjectsStore } from "./projects";
 import { useTerminalTabsStore } from "./terminal-tabs";
+import { useSessionStateStore } from "./session-state";
 import { useTilingLayoutStore } from "./tiling-layout";
 
 export type WorkspaceColor =
@@ -175,18 +176,24 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const workspace = workspaces.find((w) => w.id === workspaceId);
     if (!workspace) return;
 
-    // Save outgoing workspace's tiling layout before switching
+    // Persist the outgoing workspace's full project UI state (tabs with
+    // cliSessionId, layout, sidebar, etc.) so sessions can resume on return.
+    // Dynamic import avoids circular dependency (projects.ts imports workspace.ts).
     const outgoingWsId = get().activeWorkspaceId;
     if (outgoingWsId) {
       const outgoingWs = get().workspaces.find((w) => w.id === outgoingWsId);
       const outgoingProjectPath = outgoingWs?.lastActiveProjectPath || outgoingWs?.projects[0]?.path;
-      const layoutJson = useTilingLayoutStore.getState().getModelJson();
-      const saveArgs: Record<string, unknown> = { workspaceId: outgoingWsId, layoutJson };
-      if (outgoingProjectPath) saveArgs.projectPath = outgoingProjectPath;
-      invoke("save_ui_preferences", saveArgs).catch(() => {});
+      if (outgoingProjectPath) {
+        const { saveCurrentProjectToDisk } = await import("./projects");
+        await saveCurrentProjectToDisk(outgoingProjectPath);
+      }
     }
 
     await get().setActiveWorkspace(workspaceId);
+
+    // Guard the reactive persist effect in App.tsx from overwriting the
+    // outgoing project's freshly saved state with empty tabs/layout.
+    useProjectsStore.setState({ isSwitchingProject: true });
 
     // Clear existing trees and expanded paths before loading the new workspace's projects
     useFileTreeStore.setState({
@@ -208,8 +215,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       useProjectsStore.setState({ activeProjectPath: targetProjectPath });
     }
 
-    // Close existing PTY sessions before clearing tabs to prevent orphan processes
+    // Clean up session state BEFORE closing PTYs so that the pty:exit
+    // events do not trigger spurious "finished with new output" notifications.
     const existingTabs = useTerminalTabsStore.getState().tabs;
+    for (const tab of existingTabs) {
+      useSessionStateStore.getState().cleanup(tab.id);
+    }
+
+    // Close existing PTY sessions before clearing tabs to prevent orphan processes
     for (const tab of existingTabs) {
       invoke("close_pty", { tabId: tab.id }).catch(() => {});
     }
@@ -246,7 +259,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const projectPath = workspace.lastActiveProjectPath || workspace.projects[0]?.path;
     if (projectPath) {
       const uiState = await invoke<{
-        tabs?: Array<{ id?: string; path?: string; sessionType: string; cliSessionId?: string; exited?: boolean }>;
+        tabs?: Array<{ id?: string; path?: string; sessionType: string; cliSessionId?: string; exited?: boolean; customName?: string }>;
         activeTabIndex?: number;
       } | null>("get_project_ui_state", { workspaceId, path: projectPath });
 
@@ -257,7 +270,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         for (const tab of uiState.tabs) {
           const tabPath = tab.path || projectPath;
           const id = tab.id || tabsStore.nextTabId();
-          tabsStore.addTab(id, tabPath, (tab.sessionType || "claude") as SessionType);
+          tabsStore.addTab(id, tabPath, (tab.sessionType || "claude") as SessionType, tab.customName);
           if (tab.cliSessionId) {
             tabsStore.setCliSessionId(id, tab.cliSessionId);
           }
@@ -275,6 +288,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         }
       }
     }
+
+    // Allow the reactive persist effect in App.tsx to resume normal saves.
+    useProjectsStore.setState({ isSwitchingProject: false });
   },
 }));
 

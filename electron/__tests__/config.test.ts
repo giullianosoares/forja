@@ -467,6 +467,40 @@ describe("config module", () => {
       });
     });
 
+    it("round-trips rightPanelActiveView and activePluginName", async () => {
+      const { createWorkspace, addProjectToWorkspace, saveProjectUiState, getProjectUiState } =
+        await import("../config");
+      createWorkspace("WS");
+      addProjectToWorkspace("test-uuid-1", tmpDir);
+
+      saveProjectUiState("test-uuid-1", tmpDir, {
+        rightPanelActiveView: "plugins",
+        activePluginName: "my-plugin",
+      });
+
+      const state = getProjectUiState("test-uuid-1", tmpDir);
+      expect(state).not.toBeNull();
+      expect(state!.rightPanelActiveView).toBe("plugins");
+      expect(state!.activePluginName).toBe("my-plugin");
+    });
+
+    it("round-trips activePluginName as null", async () => {
+      const { createWorkspace, addProjectToWorkspace, saveProjectUiState, getProjectUiState } =
+        await import("../config");
+      createWorkspace("WS");
+      addProjectToWorkspace("test-uuid-1", tmpDir);
+
+      saveProjectUiState("test-uuid-1", tmpDir, {
+        rightPanelActiveView: "chat",
+        activePluginName: null,
+      });
+
+      const state = getProjectUiState("test-uuid-1", tmpDir);
+      expect(state).not.toBeNull();
+      expect(state!.rightPanelActiveView).toBe("chat");
+      expect(state!.activePluginName).toBeNull();
+    });
+
     it("saves tabs with id, path, and activeTabIndex", async () => {
       const { createWorkspace, addProjectToWorkspace, saveProjectUiState, getProjectUiState } =
         await import("../config");

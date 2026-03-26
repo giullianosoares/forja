@@ -57,6 +57,7 @@ export function useKeyboardShortcuts({
       }
       if (mod && event.shiftKey && event.key.toLowerCase() === "t") {
         event.preventDefault();
+        if (!useFileTreeStore.getState().currentPath) return;
         useCommandPaletteStore.getState().open("sessions");
         return;
       }
@@ -167,6 +168,7 @@ export function useKeyboardShortcuts({
       }
       if (mod && event.shiftKey && event.key.toLowerCase() === "e") {
         event.preventDefault();
+        if (!useFileTreeStore.getState().currentPath) return;
         if (tilingStore.hasBlock("tab-file-tree")) {
           tilingStore.selectTab("tab-file-tree");
         } else {
@@ -221,6 +223,24 @@ export function useKeyboardShortcuts({
         if (index < projects.length) {
           swp(projects[index].path);
         }
+        return;
+      }
+      // Alt+N — jump to next project with pending notification
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        const { projects, activeProjectPath, notifiedProjects, switchToProject } =
+          useProjectsStore.getState();
+        const unread = projects.filter((p) => notifiedProjects.has(p.path));
+        if (unread.length === 0) return;
+
+        const activeIdx = projects.findIndex((p) => p.path === activeProjectPath);
+        const next =
+          unread.find((p) => {
+            const idx = projects.findIndex((pp) => pp.path === p.path);
+            return idx > activeIdx;
+          }) ?? unread[0];
+
+        if (next) switchToProject(next.path);
         return;
       }
       // Ctrl+Tab / Ctrl+Shift+Tab: cycle ALL tabs across ALL panes (like Chrome)

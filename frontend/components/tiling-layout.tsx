@@ -29,6 +29,7 @@ import { useTerminalTabsStore } from "@/stores/terminal-tabs";
 import { useFilePreviewStore } from "@/stores/file-preview";
 import { useAgentChatStore } from "@/stores/agent-chat";
 import { useFileTreeStore, findNode } from "@/stores/file-tree";
+import { useProjectsStore } from "@/stores/projects";
 import { useSessionStateStore } from "@/stores/session-state";
 import { blockFactory } from "@/components/block-factory";
 import { ForjaEmptyState } from "@/components/forja-empty-state";
@@ -116,7 +117,23 @@ export function TilingLayout() {
   const isPinned = useFilePreviewStore((s) => s.isPinned);
   const previewTabId = useFilePreviewStore((s) => s.previewTabId);
 
+  // Subscribe to notification state for tabset notification dots
+  const notifiedProjects = useProjectsStore((s) => s.notifiedProjects);
+  const allTerminalTabs = useTerminalTabsStore((s) => s.tabs);
+
   const handleAction = useCallback((action: Action) => {
+    // Clear notification when user selects a tab belonging to a notified project
+    if (action.type === Actions.SELECT_TAB) {
+      const nodeId = action.data?.node as string | undefined;
+      if (nodeId) {
+        useSessionStateStore.getState().markTabSeen(nodeId);
+        const tab = useTerminalTabsStore.getState().tabs.find((t) => t.id === nodeId);
+        if (tab && useProjectsStore.getState().notifiedProjects.has(tab.path)) {
+          useProjectsStore.getState().clearProjectNotified(tab.path);
+        }
+      }
+    }
+
     // Sync store state when flexlayout closes a tab via its own UI
     if (action.type === Actions.DELETE_TAB) {
       const nodeId = action.data?.node as string | undefined;
@@ -200,14 +217,16 @@ export function TilingLayout() {
     (newModel: Model, _action: Action) => {
       updateModel(newModel);
 
-      // Debounced persist to disk
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => {
-        const json = newModel.toJson();
-        const args: Record<string, unknown> = { layoutJson: json };
-        if (currentProjectPath) args.projectPath = currentProjectPath;
-        invoke("save_ui_preferences", args).catch(() => {});
-      }, LAYOUT_SAVE_DEBOUNCE_MS);
+      // Debounced persist to disk — only when a project is active.
+      // Layout is now managed per-project via saveCurrentProjectToDisk;
+      // skip workspace-level saves to avoid stale layout flash on startup.
+      if (currentProjectPath) {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => {
+          const json = newModel.toJson();
+          invoke("save_ui_preferences", { layoutJson: json, projectPath: currentProjectPath }).catch(() => {});
+        }, LAYOUT_SAVE_DEBOUNCE_MS);
+      }
     },
     [updateModel, currentProjectPath],
   );
@@ -237,11 +256,24 @@ export function TilingLayout() {
       // Check which block types exist in this tabset
       const children = node.getChildren() ?? [];
 
-      // Hide maximize button for empty tabsets
-      if (children.length === 0) {
-        renderValues.buttons = [];
-        renderValues.stickyButtons = [];
-        return;
+      // Notification dot: check if any terminal tab in this tabset belongs to a notified project
+      const hasNotifiedTab = children.some((child) => {
+        const tabId = (child as TabNode).getId();
+        const tab = allTerminalTabs.find((t) => t.id === tabId);
+        return tab && notifiedProjects.has(tab.path);
+      });
+
+      if (hasNotifiedTab) {
+        renderValues.buttons.unshift(
+          <span
+            key="notif-dot"
+            className="relative mr-1 flex h-2 w-2 shrink-0"
+            aria-label="Unread notification"
+          >
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ctp-green opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-ctp-green" />
+          </span>,
+        );
       }
 
       const hasFileTree = children.some(
@@ -314,7 +346,7 @@ export function TilingLayout() {
       }
 
     },
-    [],
+    [notifiedProjects, allTerminalTabs],
   );
 
   const onRenderTab = useCallback(
@@ -350,9 +382,6 @@ export function TilingLayout() {
       }
 
       // --- Content: name label with double-click handling ---
-      // ALL tabs block double-click propagation to prevent FlexLayout's maximize
-      // toggle on double-click. The maximize button in the tabset header still works
-      // because it uses onClick, not onDoubleClick.
       const isRenamable = RENAMABLE_BLOCK_TYPES.has(component);
 
       const handleDoubleClick = (e: React.MouseEvent) => {

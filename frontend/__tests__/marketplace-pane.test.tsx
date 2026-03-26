@@ -77,7 +77,6 @@ const defaultPluginsState = {
   pluginBadges: {},
   loading: false,
   permissionPrompt: null,
-  activePluginNameByProject: {},
 };
 
 describe("MarketplacePane", () => {

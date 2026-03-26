@@ -22,7 +22,7 @@ vi.mock("@/stores/file-tree", () => ({
 
 // Mock workspace store
 const mockLoadWorkspaces = vi.fn();
-const mockActivateWorkspace = vi.fn();
+const mockOpenWorkspaceInNewWindow = vi.fn();
 const mockUpdateWorkspaceDetails = vi.fn();
 const mockDeleteWorkspace = vi.fn();
 const mockCreateWorkspace = vi.fn();
@@ -55,7 +55,7 @@ vi.mock("@/stores/workspace", () => ({
         activeWorkspaceId: mockActiveWorkspaceId,
         loading: false,
         loadWorkspaces: mockLoadWorkspaces,
-        activateWorkspace: mockActivateWorkspace,
+        openWorkspaceInNewWindow: mockOpenWorkspaceInNewWindow,
         updateWorkspaceDetails: mockUpdateWorkspaceDetails,
         deleteWorkspace: mockDeleteWorkspace,
         createWorkspace: mockCreateWorkspace,
@@ -63,7 +63,7 @@ vi.mock("@/stores/workspace", () => ({
         addProject: vi.fn(),
         removeProject: vi.fn(),
         setActiveWorkspace: vi.fn(),
-        openWorkspaceInNewWindow: vi.fn(),
+        activateWorkspace: vi.fn(),
       };
       return selector ? selector(state) : state;
     },
@@ -73,7 +73,7 @@ vi.mock("@/stores/workspace", () => ({
         activeWorkspaceId: mockActiveWorkspaceId,
         loading: false,
         loadWorkspaces: mockLoadWorkspaces,
-        activateWorkspace: mockActivateWorkspace,
+        openWorkspaceInNewWindow: mockOpenWorkspaceInNewWindow,
         updateWorkspaceDetails: mockUpdateWorkspaceDetails,
         deleteWorkspace: mockDeleteWorkspace,
         createWorkspace: mockCreateWorkspace,
@@ -285,12 +285,9 @@ describe("WorkspaceSwitcher", () => {
       }
     });
 
-    it("'+ Create new workspace' creates and activates workspace in same window", async () => {
+    it("'+ Create new workspace' opens a new window via IPC", async () => {
       const user = userEvent.setup();
-      mockCreateWorkspace.mockResolvedValue({
-        id: "ws-new",
-        name: "New Workspace",
-      });
+      mockInvoke.mockResolvedValue({ id: "ws-new", name: "New Workspace" });
       const { WorkspaceSwitcher } = await import("../workspace-switcher");
       render(<WorkspaceSwitcher />);
 
@@ -302,13 +299,11 @@ describe("WorkspaceSwitcher", () => {
       const createBtn = screen.getByText(/create new workspace/i);
       await user.click(createBtn);
 
-      expect(mockCreateWorkspace).toHaveBeenCalled();
-      expect(mockActivateWorkspace).toHaveBeenCalledWith("ws-new");
-      // Must NOT open a new window
-      expect(mockInvoke).not.toHaveBeenCalledWith("create_and_open_workspace");
+      expect(mockInvoke).toHaveBeenCalledWith("create_and_open_workspace");
+      expect(mockLoadWorkspaces).toHaveBeenCalled();
     });
 
-    it("clicking inactive workspace activates it in the same window", async () => {
+    it("clicking inactive workspace opens it in a new window", async () => {
       const user = userEvent.setup();
       const { WorkspaceSwitcher } = await import("../workspace-switcher");
       render(<WorkspaceSwitcher />);
@@ -323,9 +318,96 @@ describe("WorkspaceSwitcher", () => {
       });
       await user.click(secondWs);
 
-      // Must activate directly, no multi-window IPC
-      expect(mockActivateWorkspace).toHaveBeenCalledWith("ws-2");
-      expect(mockInvoke).not.toHaveBeenCalledWith("focus_workspace_window", expect.anything());
+      // Must open in new window, not activate in same window
+      expect(mockOpenWorkspaceInNewWindow).toHaveBeenCalledWith("ws-2");
+    });
+
+    it("deleting last workspace creates a new one and closes window", async () => {
+      const user = userEvent.setup();
+      // Only one workspace
+      mockWorkspaces = [
+        {
+          id: "ws-1",
+          name: "My Workspace",
+          icon: "layers" as const,
+          projects: [],
+          createdAt: "2024-01-01",
+          lastUsedAt: "2024-01-01",
+        },
+      ];
+      mockInvoke.mockResolvedValue({ id: "ws-new", name: "New Workspace" });
+      const { WorkspaceSwitcher } = await import("../workspace-switcher");
+      render(<WorkspaceSwitcher />);
+
+      const trigger = screen.getByRole("button", {
+        name: /workspace: my workspace/i,
+      });
+      await user.click(trigger);
+
+      const editButton = screen.getByRole("button", { name: /edit workspace/i });
+      await user.click(editButton);
+
+      const deleteBtn = screen.getByText(/delete workspace/i);
+      await user.click(deleteBtn); // first click
+      await user.click(deleteBtn); // confirm click
+
+      expect(mockInvoke).toHaveBeenCalledWith("create_and_open_workspace");
+      expect(mockDeleteWorkspace).toHaveBeenCalledWith("ws-1");
+      expect(mockInvoke).toHaveBeenCalledWith("window:close");
+    });
+
+    it("deleting workspace with other open workspace just closes window", async () => {
+      const user = userEvent.setup();
+      mockInvoke.mockImplementation(async (channel: string) => {
+        if (channel === "is_workspace_window_open") return true;
+        return undefined;
+      });
+      const { WorkspaceSwitcher } = await import("../workspace-switcher");
+      render(<WorkspaceSwitcher />);
+
+      const trigger = screen.getByRole("button", {
+        name: /workspace: my workspace/i,
+      });
+      await user.click(trigger);
+
+      const editButton = screen.getByRole("button", { name: /edit workspace/i });
+      await user.click(editButton);
+
+      const deleteBtn = screen.getByText(/delete workspace/i);
+      await user.click(deleteBtn); // first click
+      await user.click(deleteBtn); // confirm
+
+      expect(mockDeleteWorkspace).toHaveBeenCalledWith("ws-1");
+      expect(mockInvoke).toHaveBeenCalledWith("window:close");
+      // Should NOT open new window since other workspace is already open
+      expect(mockOpenWorkspaceInNewWindow).not.toHaveBeenCalled();
+    });
+
+    it("deleting workspace opens other workspace if none are open", async () => {
+      const user = userEvent.setup();
+      mockInvoke.mockImplementation(async (channel: string) => {
+        if (channel === "is_workspace_window_open") return false;
+        return undefined;
+      });
+      const { WorkspaceSwitcher } = await import("../workspace-switcher");
+      render(<WorkspaceSwitcher />);
+
+      const trigger = screen.getByRole("button", {
+        name: /workspace: my workspace/i,
+      });
+      await user.click(trigger);
+
+      const editButton = screen.getByRole("button", { name: /edit workspace/i });
+      await user.click(editButton);
+
+      const deleteBtn = screen.getByText(/delete workspace/i);
+      await user.click(deleteBtn); // first click
+      await user.click(deleteBtn); // confirm
+
+      // Should open the other workspace before closing
+      expect(mockOpenWorkspaceInNewWindow).toHaveBeenCalledWith("ws-2");
+      expect(mockDeleteWorkspace).toHaveBeenCalledWith("ws-1");
+      expect(mockInvoke).toHaveBeenCalledWith("window:close");
     });
 
     it("confirm button calls updateWorkspaceDetails without color", async () => {

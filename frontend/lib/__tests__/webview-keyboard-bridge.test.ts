@@ -97,4 +97,22 @@ describe("shouldForwardToApp", () => {
       shouldForwardToApp({ key: "Tab", control: false, meta: false, shift: false, alt: true }),
     ).toBe(false);
   });
+
+  it("does NOT forward Ctrl+R (reload) — stays in webview", () => {
+    expect(
+      shouldForwardToApp({ key: "r", control: true, meta: false, shift: false, alt: false }),
+    ).toBe(false);
+  });
+
+  it("does NOT forward Cmd+R (reload on macOS) — stays in webview", () => {
+    expect(
+      shouldForwardToApp({ key: "r", control: false, meta: true, shift: false, alt: false }),
+    ).toBe(false);
+  });
+
+  it("does NOT forward Ctrl+Shift+R (hard reload) — stays in webview", () => {
+    expect(
+      shouldForwardToApp({ key: "r", control: true, meta: false, shift: true, alt: false }),
+    ).toBe(false);
+  });
 });

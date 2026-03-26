@@ -17,6 +17,9 @@ export interface TerminalTab {
   customName?: string;
   /** Detected CLI session ID for resume. Set when the CLI reports its session ID via output parsing. */
   cliSessionId?: string;
+  /** Epoch ms when this tab was created. Used by session detection to ignore
+   *  filesystem sessions that existed before the tab was spawned. */
+  createdAt?: number;
 }
 
 interface TerminalTabsState {
@@ -24,16 +27,15 @@ interface TerminalTabsState {
   activeTabId: string | null;
   counter: number;
   isTerminalFullscreen: boolean;
-  activeTabIdByProject: Record<string, string>;
-  isFullscreenByProject: Record<string, boolean>;
 
   nextTabId: () => string;
-  addTab: (id: string, path: string, sessionType?: SessionType) => void;
+  addTab: (id: string, path: string, sessionType?: SessionType, customName?: string) => void;
   /** Registers tab metadata WITHOUT creating a layout block. Used for non-active project tabs during session restore. */
   registerTab: (id: string, path: string, sessionType?: SessionType, customName?: string) => void;
   removeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   markTabExited: (id: string) => void;
+  markTabRunning: (id: string) => void;
   /** Renames a tab with a custom user-defined name. Empty string clears the custom name. */
   renameTab: (id: string, name: string) => void;
   toggleTerminalFullscreen: () => void;
@@ -48,19 +50,13 @@ interface TerminalTabsState {
   hasTab: (tabId: string) => boolean;
   /** Serializes tabs for a specific project path into a disk-persistable format. */
   serializeTabsForSave: (projectPath: string) => {
-    tabs: Array<{ id: string; sessionType: string; cliSessionId?: string; exited?: boolean }>;
+    tabs: Array<{ id: string; sessionType: string; cliSessionId?: string; exited?: boolean; customName?: string }>;
     activeTabIndex: number;
   };
   /** Stores the detected CLI session ID on the specified tab for future resume capability. */
   setCliSessionId: (tabId: string, sessionId: string) => void;
-  /** Saves current activeTabId for the given project path. */
-  saveActiveTabForProject: (projectPath: string) => void;
-  /** Restores activeTabId for the given project path (falls back to first tab or null). */
-  restoreActiveTabForProject: (projectPath: string) => void;
-  /** Saves terminal fullscreen state for the given project path. */
-  saveFullscreenForProject: (projectPath: string) => void;
-  /** Restores terminal fullscreen state for the given project path. */
-  restoreFullscreenForProject: (projectPath: string) => void;
+  /** Removes all tabs for a given project path. */
+  cleanupProjectState: (projectPath: string) => void;
 }
 
 export const useTerminalTabsStore = create<TerminalTabsState>((set, get) => ({
@@ -68,8 +64,6 @@ export const useTerminalTabsStore = create<TerminalTabsState>((set, get) => ({
   activeTabId: null,
   counter: 0,
   isTerminalFullscreen: false,
-  activeTabIdByProject: {},
-  isFullscreenByProject: {},
 
   nextTabId: () => {
     const newCounter = get().counter + 1;
@@ -78,13 +72,15 @@ export const useTerminalTabsStore = create<TerminalTabsState>((set, get) => ({
     return `${windowLabel}-${RENDERER_INSTANCE_ID}-tab-${newCounter}`;
   },
 
-  addTab: (id: string, path: string, sessionType: SessionType = 'claude') => {
+  addTab: (id: string, path: string, sessionType: SessionType = 'claude', customName?: string) => {
     const tab: TerminalTab = {
       id,
       name: getSessionDisplayName(sessionType),
       path,
       isRunning: true,
       sessionType,
+      createdAt: Date.now(),
+      ...(customName ? { customName } : {}),
     };
     set((state) => ({
       tabs: [...state.tabs, tab],
@@ -151,6 +147,13 @@ export const useTerminalTabsStore = create<TerminalTabsState>((set, get) => ({
       ),
     })),
 
+  markTabRunning: (id: string) =>
+    set((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.id === id ? { ...t, isRunning: true } : t
+      ),
+    })),
+
   renameTab: (id: string, name: string) =>
     set((state) => ({
       tabs: state.tabs.map((t) => {
@@ -214,6 +217,7 @@ export const useTerminalTabsStore = create<TerminalTabsState>((set, get) => ({
         sessionType: tab.sessionType,
         ...(tab.cliSessionId ? { cliSessionId: tab.cliSessionId } : {}),
         ...(!tab.isRunning ? { exited: true } : {}),
+        ...(tab.customName ? { customName: tab.customName } : {}),
       })),
       activeTabIndex: activeIdx >= 0 ? activeIdx : 0,
     };
@@ -226,39 +230,17 @@ export const useTerminalTabsStore = create<TerminalTabsState>((set, get) => ({
       ),
     })),
 
-  saveActiveTabForProject: (projectPath: string) => {
-    const { activeTabId, activeTabIdByProject } = get();
-    if (activeTabId) {
-      set({
-        activeTabIdByProject: { ...activeTabIdByProject, [projectPath]: activeTabId },
-      });
-    }
-  },
+  cleanupProjectState: (projectPath: string) => {
+    const { tabs, activeTabId } = get();
+    const remainingTabs = tabs.filter((t) => t.path !== projectPath);
 
-  restoreActiveTabForProject: (projectPath: string) => {
-    const { activeTabIdByProject, tabs } = get();
-    const savedId = activeTabIdByProject[projectPath];
-    const projectTabs = tabs.filter((t) => t.path === projectPath);
+    // If the active tab belonged to the removed project, switch to another
+    const activeGone = activeTabId && !remainingTabs.some((t) => t.id === activeTabId);
+    const newActiveTabId = activeGone ? (remainingTabs[0]?.id ?? null) : activeTabId;
 
-    if (savedId && projectTabs.some((t) => t.id === savedId)) {
-      set({ activeTabId: savedId });
-    } else if (projectTabs.length > 0) {
-      set({ activeTabId: projectTabs[0].id });
-    } else {
-      set({ activeTabId: null });
-    }
-  },
-
-  saveFullscreenForProject: (projectPath: string) => {
-    const { isTerminalFullscreen, isFullscreenByProject } = get();
     set({
-      isFullscreenByProject: { ...isFullscreenByProject, [projectPath]: isTerminalFullscreen },
+      tabs: remainingTabs,
+      activeTabId: newActiveTabId,
     });
-  },
-
-  restoreFullscreenForProject: (projectPath: string) => {
-    const { isFullscreenByProject } = get();
-    const saved = isFullscreenByProject[projectPath];
-    set({ isTerminalFullscreen: saved ?? false });
   },
 }));

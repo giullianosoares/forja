@@ -53,6 +53,8 @@ vi.mock("@/stores/file-tree", async () => {
   };
 });
 
+vi.mock("../quick-actions", () => ({ QuickActions: () => null }));
+
 vi.mock("@/stores/workspace", () => ({
   useWorkspaceStore: Object.assign(
     (selector?: (s: unknown) => unknown) => {

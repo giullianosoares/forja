@@ -43,6 +43,7 @@ describe("useTerminalTabsStore", () => {
       path: "/test/path",
       isRunning: true,
       sessionType: "claude",
+      createdAt: expect.any(Number),
     });
     expect(state.activeTabId).toBe(tabId);
   });
@@ -153,6 +154,24 @@ describe("useTerminalTabsStore", () => {
 
     const state = useTerminalTabsStore.getState();
     expect(state.tabs[0].sessionType).toBe("claude");
+  });
+
+  it("addTab accepts optional customName and stores it on the tab", () => {
+    const store = useTerminalTabsStore.getState();
+    const tabId = store.nextTabId();
+    useTerminalTabsStore.getState().addTab(tabId, "/test/path", "claude", "My Custom Tab");
+
+    const state = useTerminalTabsStore.getState();
+    expect(state.tabs[0].customName).toBe("My Custom Tab");
+  });
+
+  it("addTab without customName does not set customName field", () => {
+    const store = useTerminalTabsStore.getState();
+    const tabId = store.nextTabId();
+    useTerminalTabsStore.getState().addTab(tabId, "/test/path", "claude");
+
+    const state = useTerminalTabsStore.getState();
+    expect(state.tabs[0].customName).toBeUndefined();
   });
 
   it("creates tabs with mixed session types storing base names", () => {
@@ -267,52 +286,6 @@ describe("useTerminalTabsStore", () => {
       expect(store.hasTab("missing-tab")).toBe(false);
     });
 
-    it("remembers active tab per project when switching", () => {
-      const idA1 = createTab("/project-a", "claude");
-      const idA2 = createTab("/project-a", "terminal");
-      const idB1 = createTab("/project-b", "claude");
-
-      // Active tab is idB1 (last added)
-      // Set active to idA1 for project A
-      useTerminalTabsStore.getState().setActiveTab(idA1);
-      useTerminalTabsStore.getState().saveActiveTabForProject("/project-a");
-
-      // Switch to project B
-      useTerminalTabsStore.getState().setActiveTab(idB1);
-      useTerminalTabsStore.getState().saveActiveTabForProject("/project-b");
-
-      // Restore project A
-      useTerminalTabsStore.getState().restoreActiveTabForProject("/project-a");
-      expect(useTerminalTabsStore.getState().activeTabId).toBe(idA1);
-
-      // Restore project B
-      useTerminalTabsStore.getState().restoreActiveTabForProject("/project-b");
-      expect(useTerminalTabsStore.getState().activeTabId).toBe(idB1);
-    });
-
-    it("restoreActiveTabForProject falls back to first tab if saved tab was removed", () => {
-      const idA1 = createTab("/project-a", "claude");
-      const idA2 = createTab("/project-a", "terminal");
-
-      // Save idA1 as active for project-a
-      useTerminalTabsStore.getState().setActiveTab(idA1);
-      useTerminalTabsStore.getState().saveActiveTabForProject("/project-a");
-
-      // Remove idA1
-      useTerminalTabsStore.getState().removeTab(idA1);
-
-      // Restore should fall back to idA2
-      useTerminalTabsStore.getState().restoreActiveTabForProject("/project-a");
-      expect(useTerminalTabsStore.getState().activeTabId).toBe(idA2);
-    });
-
-    it("restoreActiveTabForProject sets null if project has no tabs", () => {
-      createTab("/project-a", "claude");
-
-      useTerminalTabsStore.getState().restoreActiveTabForProject("/project-b");
-      expect(useTerminalTabsStore.getState().activeTabId).toBeNull();
-    });
-
     it("markTabExited keeps all tabs in the list", () => {
       const idA1 = createTab("/project-a", "claude");
       const idA2 = createTab("/project-a", "terminal");
@@ -325,24 +298,13 @@ describe("useTerminalTabsStore", () => {
       expect(state.tabs[1].isRunning).toBe(true);
     });
 
-    it("exited tabs persist across project switches", () => {
+    it("exited tabs remain in the list", () => {
       const idA1 = createTab("/project-a", "claude");
       createTab("/project-b", "terminal");
 
       // Mark A's tab as exited (simulating pty:exit)
       useTerminalTabsStore.getState().markTabExited(idA1);
 
-      // Save and switch away from A
-      useTerminalTabsStore.getState().setActiveTab(idA1);
-      useTerminalTabsStore.getState().saveActiveTabForProject("/project-a");
-
-      // Switch to B
-      useTerminalTabsStore.getState().restoreActiveTabForProject("/project-b");
-
-      // Switch back to A — exited tab should still be there
-      useTerminalTabsStore.getState().restoreActiveTabForProject("/project-a");
-
-      expect(useTerminalTabsStore.getState().activeTabId).toBe(idA1);
       const tabA = useTerminalTabsStore.getState().tabs.find((t) => t.id === idA1);
       expect(tabA).toBeDefined();
       expect(tabA!.isRunning).toBe(false);
@@ -647,6 +609,27 @@ describe("useTerminalTabsStore", () => {
       const result = useTerminalTabsStore.getState().serializeTabsForSave("/project-a");
 
       expect(result.tabs[0]).not.toHaveProperty("exited");
+    });
+
+    it("includes customName when tab has been renamed", () => {
+      const id1 = createTab("/project-a", "claude");
+      useTerminalTabsStore.getState().renameTab(id1, "My Build");
+
+      const result = useTerminalTabsStore.getState().serializeTabsForSave("/project-a");
+
+      expect(result.tabs[0]).toEqual({
+        id: id1,
+        sessionType: "claude",
+        customName: "My Build",
+      });
+    });
+
+    it("omits customName when tab has not been renamed", () => {
+      createTab("/project-a", "claude");
+
+      const result = useTerminalTabsStore.getState().serializeTabsForSave("/project-a");
+
+      expect(result.tabs[0]).not.toHaveProperty("customName");
     });
 
     it("computes activeTabIndex based on active tab within project", () => {

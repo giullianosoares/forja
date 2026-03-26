@@ -38,14 +38,16 @@ import { useTerminalTabsStore } from "./stores/terminal-tabs";
 import { useTilingLayoutStore } from "./stores/tiling-layout";
 import { useTerminalZoomStore } from "./stores/terminal-zoom";
 import { useUserSettingsStore } from "./stores/user-settings";
+import { useQuickActionsStore } from "./stores/quick-actions";
 import { useThemeStore } from "./stores/theme";
 import type { ThemeDefinition } from "@/themes";
 import { applyBackgroundOpacity } from "@/themes/apply";
 import { usePerformanceStore } from "./stores/performance";
-import { useProjectsStore } from "./stores/projects";
+import { useProjectsStore, saveCurrentProjectToDisk } from "./stores/projects";
 import { useWorkspaceStore } from "./stores/workspace";
 
 import { usePluginsStore } from "./stores/plugins";
+import { useRightPanelStore } from "./stores/right-panel";
 import { useFocusModeStore } from "./stores/focus-mode";
 import { PluginPermissionDialog } from "./components/plugin-permission-dialog";
 import { FocusModeIndicator } from "./components/focus-mode-indicator";
@@ -203,6 +205,12 @@ function App({
     useWorkspaceStore.getState().loadWorkspaces().then(() => {
       setWorkspacesLoaded(true);
       useProjectsStore.getState().loadProjects();
+      // Register the primary window's workspace in the dedup map so that
+      // open_workspace_in_new_window focuses this window instead of duplicating.
+      const wsId = useWorkspaceStore.getState().activeWorkspaceId;
+      if (wsId) {
+        invoke("register_window_workspace", { workspaceId: wsId }).catch(() => {});
+      }
     });
   }, [initialWorkspaceId]);
 
@@ -274,7 +282,7 @@ function App({
       }
 
       const uiState = await invoke<{
-        tabs?: Array<{ id?: string; path?: string; sessionType: string; cliSessionId?: string }>;
+        tabs?: Array<{ id?: string; path?: string; sessionType: string; cliSessionId?: string; customName?: string }>;
         activeTabIndex?: number;
         previewFile?: string | null;
         layoutJson?: Record<string, unknown>;
@@ -327,14 +335,14 @@ function App({
           const id = tab.id && layoutStore.hasBlock(tab.id)
             ? tab.id
             : tabsStore.nextTabId();
-          tabsStore.addTab(id, tabPath, tab.sessionType as import("@/lib/cli-registry").SessionType);
+          tabsStore.addTab(id, tabPath, tab.sessionType as import("@/lib/cli-registry").SessionType, tab.customName);
           if (tab.cliSessionId) {
             tabsStore.setCliSessionId(id, tab.cliSessionId);
           }
           activeProjectTabIds.push(id);
         } else {
           const id = tab.id || tabsStore.nextTabId();
-          tabsStore.registerTab(id, tabPath, tab.sessionType as import("@/lib/cli-registry").SessionType);
+          tabsStore.registerTab(id, tabPath, tab.sessionType as import("@/lib/cli-registry").SessionType, tab.customName);
           if (tab.cliSessionId) {
             tabsStore.setCliSessionId(id, tab.cliSessionId);
           }
@@ -444,6 +452,7 @@ function App({
   // Load user settings on mount and listen for changes
   useEffect(() => {
     useUserSettingsStore.getState().loadSettings();
+    useQuickActionsStore.getState().loadActions();
 
     const unlisten = listen<import("@/lib/settings-types").UserSettings>(
       "settings:changed",
@@ -679,6 +688,9 @@ function App({
           projectPath,
           anyRunning ? "running" : "exited",
         );
+        if (!anyRunning) {
+          useProjectsStore.getState().markProjectNotified(projectPath, "Session finished");
+        }
       } else {
         useProjectsStore.getState().setProjectSessionState(projectPath, state);
       }
@@ -699,20 +711,14 @@ function App({
     if (initialWorkspaceId) return;
     if (useProjectsStore.getState().isSwitchingProject) return;
 
-    // Persist full tab data + layout to config.json per project
+    // Persist full UI state to config.json per project (single source of truth)
     if (currentPath) {
+      saveCurrentProjectToDisk(currentPath).catch((err: unknown) =>
+        console.warn("[App] Failed to save project UI state:", err),
+      );
+
       const wsId = useWorkspaceStore.getState().activeWorkspaceId;
       if (wsId) {
-        const tabsStore = useTerminalTabsStore.getState();
-        invoke("save_project_ui_state", {
-          workspaceId: wsId,
-          path: currentPath,
-          state: {
-            ...tabsStore.serializeTabsForSave(currentPath),
-            layoutJson: useTilingLayoutStore.getState().getModelJson() as Record<string, unknown>,
-          },
-        }).catch((err: unknown) => console.warn("[App] Failed to save project tab state:", err));
-
         invoke("set_last_active_project_path", {
           workspaceId: wsId,
           projectPath: currentPath,
@@ -729,29 +735,38 @@ function App({
     tilingTabCount,
   ]);
 
-  // Safety net: save ALL projects' terminal tabs on window close.
-  // The reactive effect above only covers the active project; this ensures
-  // non-active projects' tabs are persisted before the window is destroyed.
+  // Save active project's UI state on window close.
+  // Uses already-imported stores to avoid async dynamic imports — the IPC
+  // message must be enqueued synchronously before the window closes.
   useEffect(() => {
     if (initialWorkspaceId) return;
 
     const handler = () => {
-      const tabsStore = useTerminalTabsStore.getState();
+      const activeProjectPath = useProjectsStore.getState().activeProjectPath;
+      if (!activeProjectPath) return;
+
       const wsId = useWorkspaceStore.getState().activeWorkspaceId;
       if (!wsId) return;
 
-      const layoutJson = useTilingLayoutStore.getState().getModelJson() as Record<string, unknown>;
-      const projectPaths = new Set(tabsStore.tabs.map((t) => t.path));
-      for (const projectPath of projectPaths) {
-        invoke("save_project_ui_state", {
-          workspaceId: wsId,
-          path: projectPath,
-          state: {
-            ...tabsStore.serializeTabsForSave(projectPath),
-            layoutJson,
-          },
-        }).catch(() => {});
-      }
+      const tabsStore = useTerminalTabsStore.getState();
+      const tilingStore = useTilingLayoutStore.getState();
+
+      // Fire-and-forget: invoke enqueues the IPC message synchronously,
+      // so the main process receives it even though we can't await the response.
+      invoke("save_project_ui_state", {
+        workspaceId: wsId,
+        path: activeProjectPath,
+        state: {
+          sidebarOpen: useFileTreeStore.getState().isOpen,
+          rightPanelOpen: useRightPanelStore.getState().isOpen,
+          rightPanelActiveView: useRightPanelStore.getState().activeView,
+          terminalFullscreen: tabsStore.isTerminalFullscreen,
+          previewFile: useFilePreviewStore.getState().currentFile,
+          activePluginName: usePluginsStore.getState().activePluginName,
+          layoutJson: tilingStore.getModelJson() as Record<string, unknown>,
+          ...tabsStore.serializeTabsForSave(activeProjectPath),
+        },
+      }).catch(() => {});
     };
 
     window.addEventListener("beforeunload", handler);
@@ -784,9 +799,9 @@ function App({
               sessionRestoreDone ? <TilingLayout /> : null
             ) : tilingTabCount > 0 ? (
               <TilingLayout />
-            ) : (
+            ) : sessionRestoreDone ? (
               <EmptyState />
-            )}
+            ) : null}
             </div>
             <div className={cn("transition-all duration-200", isFocusMode && "w-0 overflow-hidden opacity-0")}>
               <RightSidebar hasProject={hasProject} />

@@ -53,6 +53,8 @@ vi.mock("@/stores/file-tree", async () => {
   };
 });
 
+vi.mock("../quick-actions", () => ({ QuickActions: () => null }));
+
 vi.mock("@/stores/app-dialogs", async () => {
   const { create } = await import("zustand");
   const useAppDialogsStore = create(() => ({

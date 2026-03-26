@@ -36,6 +36,7 @@ export interface PluginManifest {
   icon: string;
   entry: string;
   permissions: PluginPermission[];
+  tags?: string[];
   scope?: PluginScope;
   minForjaVersion?: string;
 }

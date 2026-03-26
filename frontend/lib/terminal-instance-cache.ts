@@ -9,6 +9,11 @@ export interface CachedTerminal {
   hostElement: HTMLDivElement;
 }
 
+/** Extended entry with internal flush handle (not exposed to consumers). */
+interface CachedTerminalInternal extends CachedTerminal {
+  _flushParkedWrites?: () => void;
+}
+
 export const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const CACHE_MAX_SIZE = 20;
 
@@ -48,8 +53,10 @@ export const terminalCache = {
   get(tabId: string): CachedTerminal | undefined {
     const entry = cache.get(tabId);
     if (entry) {
-      // Retrieved by consumer — cancel TTL timer (will be reattached)
       clearTtlTimer(tabId);
+      // Flush any RAF-buffered writes before returning to consumer
+      (entry as CachedTerminalInternal)._flushParkedWrites?.();
+      delete (entry as CachedTerminalInternal)._flushParkedWrites;
     }
     return entry;
   },
@@ -95,11 +102,43 @@ export const terminalCache = {
       }, CACHE_TTL_MS),
     );
 
-    // Re-register data/exit handlers AFTER use-pty's cleanup runs
+    // Re-register data/exit handlers AFTER use-pty's cleanup runs.
+    // Use RAF-coalesced writes (same pattern as TerminalSession) so that
+    // Ink TUI multi-chunk redraws are batched into a single xterm.write(),
+    // preventing intermediate render states in the buffer.
     queueMicrotask(() => {
       if (!cache.has(tabId)) return;
+
+      let writeBuffer = "";
+      let writeRafId = 0;
+
+      const flushBuffer = () => {
+        writeRafId = 0;
+        const chunk = writeBuffer;
+        writeBuffer = "";
+        terminal.write(chunk);
+      };
+
+      // Store flush handle so get() can flush before returning
+      const entry = cache.get(tabId);
+      if (entry) {
+        (entry as CachedTerminalInternal)._flushParkedWrites = () => {
+          if (writeRafId) {
+            cancelAnimationFrame(writeRafId);
+            writeRafId = 0;
+          }
+          if (writeBuffer) {
+            terminal.write(writeBuffer);
+            writeBuffer = "";
+          }
+        };
+      }
+
       ptyDispatcher.registerData(tabId, (data) => {
-        terminal.write(data);
+        writeBuffer += data;
+        if (!writeRafId) {
+          writeRafId = requestAnimationFrame(flushBuffer);
+        }
       });
       ptyDispatcher.registerExit(tabId, () => {
         terminal.write("\r\n\x1b[1;33m[Session ended]\x1b[0m\r\n");

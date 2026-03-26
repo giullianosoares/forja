@@ -104,11 +104,29 @@ describe("shouldForwardToApp (main process)", () => {
       shouldForwardToApp(makeInput({ key: "a", control: false })),
     ).toBe(false);
   });
+
+  it("does NOT forward Ctrl+R (reload) — stays in webview", () => {
+    expect(
+      shouldForwardToApp(makeInput({ key: "r", control: true })),
+    ).toBe(false);
+  });
+
+  it("does NOT forward Cmd+R (reload on macOS) — stays in webview", () => {
+    expect(
+      shouldForwardToApp(makeInput({ key: "r", control: false, meta: true })),
+    ).toBe(false);
+  });
+
+  it("does NOT forward Ctrl+Shift+R (hard reload) — stays in webview", () => {
+    expect(
+      shouldForwardToApp(makeInput({ key: "r", control: true, shift: true })),
+    ).toBe(false);
+  });
 });
 
 describe("attachWebviewKeyboardBridge", () => {
   let handlers: Map<string, (event: unknown, input: unknown) => void>;
-  let mockContents: { on: ReturnType<typeof vi.fn> };
+  let mockContents: { on: ReturnType<typeof vi.fn>; reload: ReturnType<typeof vi.fn> };
   let sendSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -117,6 +135,7 @@ describe("attachWebviewKeyboardBridge", () => {
       on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
         handlers.set(event, handler);
       }),
+      reload: vi.fn(),
     };
     sendSpy = vi.fn();
   });
@@ -199,5 +218,65 @@ describe("attachWebviewKeyboardBridge", () => {
         shift: true,
       }),
     );
+  });
+
+  it("reloads webview on F5", () => {
+    attachWebviewKeyboardBridge(mockContents as never, sendSpy);
+    const handler = handlers.get("before-input-event")!;
+    const mockEvent = { preventDefault: vi.fn() };
+
+    handler(
+      mockEvent,
+      makeInput({ key: "F5", control: false, code: "F5" }),
+    );
+
+    expect(mockEvent.preventDefault).toHaveBeenCalled();
+    expect(mockContents.reload).toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
+  });
+
+  it("reloads webview on Ctrl+R", () => {
+    attachWebviewKeyboardBridge(mockContents as never, sendSpy);
+    const handler = handlers.get("before-input-event")!;
+    const mockEvent = { preventDefault: vi.fn() };
+
+    handler(
+      mockEvent,
+      makeInput({ key: "r", control: true, code: "KeyR" }),
+    );
+
+    expect(mockEvent.preventDefault).toHaveBeenCalled();
+    expect(mockContents.reload).toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
+  });
+
+  it("reloads webview on Cmd+R (macOS)", () => {
+    attachWebviewKeyboardBridge(mockContents as never, sendSpy);
+    const handler = handlers.get("before-input-event")!;
+    const mockEvent = { preventDefault: vi.fn() };
+
+    handler(
+      mockEvent,
+      makeInput({ key: "r", control: false, meta: true, code: "KeyR" }),
+    );
+
+    expect(mockEvent.preventDefault).toHaveBeenCalled();
+    expect(mockContents.reload).toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
+  });
+
+  it("reloads webview on Ctrl+Shift+R (hard reload)", () => {
+    attachWebviewKeyboardBridge(mockContents as never, sendSpy);
+    const handler = handlers.get("before-input-event")!;
+    const mockEvent = { preventDefault: vi.fn() };
+
+    handler(
+      mockEvent,
+      makeInput({ key: "r", control: true, shift: true, code: "KeyR" }),
+    );
+
+    expect(mockEvent.preventDefault).toHaveBeenCalled();
+    expect(mockContents.reload).toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
   });
 });

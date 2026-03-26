@@ -1,4 +1,4 @@
-import { Download, Loader2, Puzzle } from "lucide-react";
+import { Download, HardDrive, Loader2, Puzzle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { getPluginIcon } from "@/lib/plugin-types";
@@ -9,6 +9,7 @@ interface MarketplacePluginCardProps {
   installed: boolean;
   installedVersion?: string;
   installProgress?: InstallProgress;
+  isLocal?: boolean;
   onInstall: (name: string) => void;
   onUninstall: (name: string) => void;
 }
@@ -114,7 +115,7 @@ function PluginActionButton({
 }
 
 export function MarketplacePluginCard(props: MarketplacePluginCardProps) {
-  const { plugin } = props;
+  const { plugin, isLocal } = props;
   const IconComponent = getPluginIcon(plugin.icon);
   const Icon = IconComponent ?? Puzzle;
 
@@ -129,9 +130,17 @@ export function MarketplacePluginCard(props: MarketplacePluginCardProps) {
       <div className="flex-1 min-w-0">
         {/* Header row: name + button */}
         <div className="flex items-start justify-between gap-2">
-          <span className="text-app-sm font-medium text-ctp-text leading-tight truncate">
-            {plugin.displayName}
-          </span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-app-sm font-medium text-ctp-text leading-tight truncate">
+              {plugin.displayName}
+            </span>
+            {isLocal && (
+              <span className="shrink-0 flex items-center gap-0.5 rounded bg-ctp-surface1 px-1.5 py-0.5 text-app-xs text-ctp-overlay1">
+                <HardDrive className="h-2.5 w-2.5" strokeWidth={1.5} />
+                Local
+              </span>
+            )}
+          </div>
           <div className="shrink-0">
             <PluginActionButton {...props} />
           </div>
@@ -158,10 +167,12 @@ export function MarketplacePluginCard(props: MarketplacePluginCardProps) {
             </span>
           ))}
 
-          <span className="ml-auto flex items-center gap-0.5 text-app-xs text-ctp-overlay0 shrink-0">
-            <Download className="h-3 w-3" strokeWidth={1.5} />
-            {formatDownloads(plugin.downloads)}
-          </span>
+          {!isLocal && (
+            <span className="ml-auto flex items-center gap-0.5 text-app-xs text-ctp-overlay0 shrink-0">
+              <Download className="h-3 w-3" strokeWidth={1.5} />
+              {formatDownloads(plugin.downloads)}
+            </span>
+          )}
         </div>
       </div>
     </div>

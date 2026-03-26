@@ -402,8 +402,8 @@ describe("resumeFlag field", () => {
     expect(CLI_REGISTRY.gemini.resumeFlag).toBe("--resume");
   });
 
-  it("codex has resumeFlag set to '--resume'", () => {
-    expect(CLI_REGISTRY.codex.resumeFlag).toBe("--resume");
+  it("codex has resumeFlag set to 'resume' (subcommand style)", () => {
+    expect(CLI_REGISTRY.codex.resumeFlag).toBe("resume");
   });
 
   it("cursor-agent uses '--resume=' flag format", () => {
@@ -552,6 +552,33 @@ describe("detectSessionId", () => {
   it("extracts session ID from codex output", () => {
     expect(detectSessionId("codex", "session: codex-session-99")).toBe("codex-session-99");
   });
+
+  describe("ANSI escape code handling", () => {
+    it("extracts claude session ID from ANSI-wrapped output", () => {
+      const ansiData = "\x1b[2msession:\x1b[0m \x1b[33mabc-def-123\x1b[0m";
+      expect(detectSessionId("claude", ansiData)).toBe("abc-def-123");
+    });
+
+    it("extracts session ID when SGR codes surround the text", () => {
+      const ansiData = "\x1b[1;36msession: deadbeef-cafe-1234\x1b[0m";
+      expect(detectSessionId("claude", ansiData)).toBe("deadbeef-cafe-1234");
+    });
+
+    it("extracts session ID from cursor-positioned TUI output", () => {
+      const ansiData = "\x1b[24;60H\x1b[2msession:\x1b[22m \x1b[33m01234567-89ab-cdef-0123-456789abcdef\x1b[0m";
+      expect(detectSessionId("claude", ansiData)).toBe("01234567-89ab-cdef-0123-456789abcdef");
+    });
+
+    it("extracts gemini session ID from ANSI-wrapped output", () => {
+      const ansiData = "\x1b[1msession:\x1b[0m \x1b[32mgemini-sess-42\x1b[0m";
+      expect(detectSessionId("gemini", ansiData)).toBe("gemini-sess-42");
+    });
+
+    it("extracts cursor-agent chat ID from ANSI-wrapped output", () => {
+      const ansiData = "\x1b[36mchat:\x1b[0m \x1b[33mmy-chat-id\x1b[0m";
+      expect(detectSessionId("cursor-agent", ansiData)).toBe("my-chat-id");
+    });
+  });
 });
 
 describe("computeTabDisplayNames", () => {
@@ -670,5 +697,45 @@ describe("computeTabDisplayNames", () => {
       expect(names["t9"]).toBe("Claude Code #2");
       expect(names["t15"]).toBe("Claude Code #3");
     });
+  });
+});
+
+describe("sessionDirType field", () => {
+  it("claude uses 'claude-dir' for filesystem-based session detection", () => {
+    expect(CLI_REGISTRY.claude.sessionDirType).toBe("claude-dir");
+  });
+
+  it("gemini uses 'gemini-dir' for filesystem-based session detection", () => {
+    expect(CLI_REGISTRY.gemini.sessionDirType).toBe("gemini-dir");
+  });
+
+  it("codex uses 'codex-dir' for filesystem-based session detection", () => {
+    expect(CLI_REGISTRY.codex.sessionDirType).toBe("codex-dir");
+  });
+
+  it("cursor-agent uses 'cursor-dir' for filesystem-based session detection", () => {
+    expect(CLI_REGISTRY["cursor-agent"].sessionDirType).toBe("cursor-dir");
+  });
+
+  it("gh-copilot has no sessionDirType (no local session storage)", () => {
+    expect(CLI_REGISTRY["gh-copilot"].sessionDirType).toBeUndefined();
+  });
+});
+
+describe("resumeIdType field", () => {
+  it("gemini uses 'latest' resumeIdType (always passes --resume latest)", () => {
+    expect(CLI_REGISTRY.gemini.resumeIdType).toBe("latest");
+  });
+
+  it("claude defaults to undefined resumeIdType (uses session ID directly)", () => {
+    expect(CLI_REGISTRY.claude.resumeIdType).toBeUndefined();
+  });
+
+  it("codex defaults to undefined resumeIdType (uses session ID directly)", () => {
+    expect(CLI_REGISTRY.codex.resumeIdType).toBeUndefined();
+  });
+
+  it("cursor-agent defaults to undefined resumeIdType (uses session ID directly)", () => {
+    expect(CLI_REGISTRY["cursor-agent"].resumeIdType).toBeUndefined();
   });
 });

@@ -33,9 +33,11 @@ const __dirname = path.dirname(__filename);
 import { resolveShellPath, spawnPty, writePty, resizePty, closePty, closeAllPtysForWindow, getSessionBuffer, hasPty, getAllSessionBuffers } from "./pty.js";
 import { isUiSaveSuspended, suspendUiSaves, resumeUiSaves } from "./ui-save-gate.js";
 import { attachWebviewKeyboardBridge } from "./webview-keyboard-bridge.js";
+import { getCliSessions } from "./cli-sessions.js";
 
 // Type-only imports for signatures
 import type { UiPreferences, ProjectUiState, WorkspaceProject } from "./config.js";
+import { getQuickActions, saveQuickActions } from "./config.js";
 
 // Track which BrowserWindow belongs to which workspace
 const windowWorkspaceMap = new Map<number, string>();
@@ -502,10 +504,24 @@ ipcMain.handle("save_project_ui_state", async (_event, args: { workspaceId: stri
   config.saveProjectUiState(args.workspaceId, args.path, args.state);
 });
 
+// CLI session discovery (dispatches to per-CLI session reader)
+ipcMain.handle("get_cli_sessions", (_event, args: { cliId: string; projectPath: string; limit?: number }) => {
+  return getCliSessions(args.cliId, args.projectPath, args.limit);
+});
+
 // Last active project path (workspace-scoped)
 ipcMain.handle("set_last_active_project_path", async (_event, args: { workspaceId: string; projectPath: string }) => {
   const config = await getConfig();
   config.setLastActiveProjectPath(args.workspaceId, args.projectPath);
+});
+
+// Quick Actions persistence
+ipcMain.handle("get_quick_actions", () => {
+  return getQuickActions();
+});
+
+ipcMain.handle("save_quick_actions", (_event, { actions }: { actions: Array<{ actionId: string }> }) => {
+  saveQuickActions(actions);
 });
 
 // Focus existing workspace window or open a new one
@@ -538,6 +554,34 @@ ipcMain.handle("open_workspace_in_new_window", async (_event, args: { workspaceI
     }
   }
   await createWindow(undefined, args.workspaceId);
+});
+
+// Check whether a workspace already has an open window.
+ipcMain.handle("is_workspace_window_open", (_event, args: { workspaceId: string }) => {
+  for (const [winId, wsId] of windowWorkspaceMap) {
+    if (wsId === args.workspaceId) {
+      const win = BrowserWindow.fromId(winId);
+      if (win && !win.isDestroyed()) return true;
+      windowWorkspaceMap.delete(winId);
+    }
+  }
+  return false;
+});
+
+// Register the calling window's workspace in the dedup map.
+// The primary window (no initialWorkspaceId) uses this to register itself
+// so that open_workspace_in_new_window can focus it instead of duplicating.
+ipcMain.handle("register_window_workspace", async (event, args: { workspaceId: string }) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return;
+  // Remove any stale entry for this workspace first
+  for (const [winId, wsId] of windowWorkspaceMap) {
+    if (wsId === args.workspaceId && winId !== win.id) {
+      const old = BrowserWindow.fromId(winId);
+      if (!old || old.isDestroyed()) windowWorkspaceMap.delete(winId);
+    }
+  }
+  windowWorkspaceMap.set(win.id, args.workspaceId);
 });
 
 // Create a new workspace and open it in a new window
@@ -633,11 +677,18 @@ ipcMain.handle(
   "pty:notify-session-finished",
   async (
     _event,
-    args: { projectPath: string; sessionType: string; activeProjectPath: string | null },
+    args: { projectPath: string; sessionType: string; activeProjectPath: string | null; tabId?: string },
   ) => {
-    const { showSessionFinishedNotification } = await import("./pty-notifications.js");
+    const { showSessionFinishedNotification, extractNotificationSummary } = await import("./pty-notifications.js");
+    let summary: string | undefined;
+    if (args.tabId) {
+      const buffer = getSessionBuffer(args.tabId);
+      if (buffer) {
+        summary = extractNotificationSummary(buffer);
+      }
+    }
     const mainWindow = BrowserWindow.getAllWindows()[0] ?? null;
-    showSessionFinishedNotification(args, mainWindow);
+    showSessionFinishedNotification({ ...args, summary }, mainWindow);
   },
 );
 

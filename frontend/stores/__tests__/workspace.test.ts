@@ -8,11 +8,20 @@ import type { Workspace, WorkspaceProject } from "../workspace";
 import { _resetLoadWorkspacesGuard } from "../workspace";
 
 const mockInvoke = vi.fn();
+const mockSaveCurrentProjectToDisk = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/lib/ipc", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
   getCurrentWindow: () => ({ label: "main" }),
 }));
+
+vi.mock("../projects", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../projects")>();
+  return {
+    ...actual,
+    saveCurrentProjectToDisk: (...args: unknown[]) => mockSaveCurrentProjectToDisk(...args),
+  };
+});
 
 const makeProject = (path: string): WorkspaceProject => ({
   path,
@@ -47,6 +56,7 @@ describe("useWorkspaceStore", () => {
       loading: false,
     });
     mockInvoke.mockReset();
+    mockSaveCurrentProjectToDisk.mockReset().mockResolvedValue(undefined);
     // Default: any unmatched invoke call returns a resolved Promise (fire-and-forget calls like close_pty)
     mockInvoke.mockResolvedValue(undefined);
   });
@@ -581,11 +591,15 @@ describe("useWorkspaceStore", () => {
     });
 
     it("saves outgoing layout and restores incoming layout on workspace switch", async () => {
-      const ws = makeWorkspace({
+      const ws1 = makeWorkspace({
+        id: "ws-1",
+        projects: [makeProject("/project/old")],
+      });
+      const ws2 = makeWorkspace({
         id: "ws-2",
         projects: [makeProject("/project/new")],
       });
-      useWorkspaceStore.setState({ workspaces: [ws], activeWorkspaceId: "ws-1" });
+      useWorkspaceStore.setState({ workspaces: [ws1, ws2], activeWorkspaceId: "ws-1" });
 
       const mockLoadProjectTree = vi.fn().mockResolvedValue(undefined);
       const mockOpenProjectPath = vi.fn();
@@ -630,7 +644,6 @@ describe("useWorkspaceStore", () => {
       mockInvoke.mockImplementation((cmd: string, args?: any) => {
         if (cmd === "set_active_workspace") return Promise.resolve(undefined);
         if (cmd === "get_workspace_projects") return Promise.resolve([]);
-        if (cmd === "save_ui_preferences") return Promise.resolve(undefined);
         if (cmd === "get_ui_preferences") {
           expect(args).toEqual({ workspaceId: "ws-2", projectPath: "/project/new" });
           return Promise.resolve(savedUiPrefs);
@@ -641,11 +654,8 @@ describe("useWorkspaceStore", () => {
 
       await useWorkspaceStore.getState().activateWorkspace("ws-2");
 
-      // Should save outgoing workspace layout
-      expect(mockInvoke).toHaveBeenCalledWith("save_ui_preferences", expect.objectContaining({
-        workspaceId: "ws-1",
-        layoutJson: expect.any(Object),
-      }));
+      // Should persist outgoing workspace's full project state (tabs, layout, etc.)
+      expect(mockSaveCurrentProjectToDisk).toHaveBeenCalledWith("/project/old");
 
       // Should fetch incoming workspace's UI prefs
       expect(mockInvoke).toHaveBeenCalledWith("get_ui_preferences", { workspaceId: "ws-2", projectPath: "/project/new" });
@@ -731,7 +741,6 @@ describe("useWorkspaceStore", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "set_active_workspace") return Promise.resolve(undefined);
         if (cmd === "get_workspace_projects") return Promise.resolve([]);
-        if (cmd === "save_ui_preferences") return Promise.resolve(undefined);
         if (cmd === "get_ui_preferences") return Promise.resolve({ layoutJson: savedLayoutWithTerminals });
         if (cmd === "get_project_ui_state") return Promise.resolve(null);
         return Promise.resolve(undefined);
@@ -854,6 +863,54 @@ describe("useWorkspaceStore", () => {
       expect(tabsState.tabs).toHaveLength(1);
       expect(tabsState.tabs[0].id).toBe("tab-resumed");
       expect(tabsState.tabs[0].cliSessionId).toBe("abc-session-9f3e21");
+    });
+
+    it("sets isSwitchingProject during workspace activation to guard reactive saves", async () => {
+      const ws1 = makeWorkspace({
+        id: "ws-guard-1",
+        projects: [makeProject("/project/old")],
+        lastActiveProjectPath: "/project/old",
+      });
+      const ws2 = makeWorkspace({
+        id: "ws-guard-2",
+        projects: [makeProject("/project/new")],
+        lastActiveProjectPath: "/project/new",
+      });
+      useWorkspaceStore.setState({
+        workspaces: [ws1, ws2],
+        activeWorkspaceId: "ws-guard-1",
+      });
+
+      useFileTreeStore.setState({
+        loadProjectTree: vi.fn().mockResolvedValue(undefined),
+        openProjectPath: vi.fn(),
+      });
+
+      // Pre-populate tabs for the outgoing workspace
+      useTerminalTabsStore.getState().addTab("tab-old", "/project/old", "claude");
+      useTerminalTabsStore.getState().renameTab("tab-old", "My Custom Tab");
+
+      // Track isSwitchingProject across the activation
+      const observed: boolean[] = [];
+      const unsub = useProjectsStore.subscribe((state) => {
+        observed.push(state.isSwitchingProject);
+      });
+
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "set_active_workspace") return Promise.resolve(undefined);
+        if (cmd === "get_workspace_projects") return Promise.resolve([]);
+        if (cmd === "get_project_ui_state") return Promise.resolve({ tabs: [], activeTabIndex: 0 });
+        if (cmd === "close_pty") return Promise.resolve(undefined);
+        return Promise.resolve(undefined);
+      });
+
+      await useWorkspaceStore.getState().activateWorkspace("ws-guard-2");
+      unsub();
+
+      // isSwitchingProject must have been true at some point during activation
+      expect(observed).toContain(true);
+      // And must be false after completion
+      expect(useProjectsStore.getState().isSwitchingProject).toBe(false);
     });
   });
 });

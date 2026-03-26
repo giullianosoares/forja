@@ -2,6 +2,145 @@ import { create } from "zustand";
 import { invoke } from "@/lib/ipc";
 import { useWorkspaceStore } from "./workspace";
 
+// ---------------------------------------------------------------------------
+// Module-level helpers (Task 6): single source of truth for project UI state
+// ---------------------------------------------------------------------------
+
+export async function saveCurrentProjectToDisk(projectPath: string): Promise<void> {
+  const wsId = useWorkspaceStore.getState().activeWorkspaceId;
+  if (!wsId) return;
+
+  // Dynamic imports to avoid circular dependencies
+  const [
+    { useTerminalTabsStore },
+    { useTilingLayoutStore },
+    { useFileTreeStore },
+    { useRightPanelStore },
+    { useFilePreviewStore },
+    { usePluginsStore },
+    { resolveMissingSessionIds },
+  ] = await Promise.all([
+    import("./terminal-tabs"),
+    import("./tiling-layout"),
+    import("./file-tree"),
+    import("./right-panel"),
+    import("./file-preview"),
+    import("./plugins"),
+    import("@/hooks/use-pty"),
+  ]);
+
+  // Safety net: resolve any missing session IDs before saving
+  await resolveMissingSessionIds(projectPath);
+
+  const tabsStore = useTerminalTabsStore.getState();
+  const tilingStore = useTilingLayoutStore.getState();
+
+  await invoke("save_project_ui_state", {
+    workspaceId: wsId,
+    path: projectPath,
+    state: {
+      sidebarOpen: useFileTreeStore.getState().isOpen,
+      rightPanelOpen: useRightPanelStore.getState().isOpen,
+      rightPanelActiveView: useRightPanelStore.getState().activeView,
+      terminalFullscreen: tabsStore.isTerminalFullscreen,
+      previewFile: useFilePreviewStore.getState().currentFile,
+      activePluginName: usePluginsStore.getState().activePluginName,
+      layoutJson: tilingStore.getModelJson() as Record<string, unknown>,
+      ...tabsStore.serializeTabsForSave(projectPath),
+    },
+  });
+}
+
+export async function loadProjectFromDisk(projectPath: string): Promise<void> {
+  const wsId = useWorkspaceStore.getState().activeWorkspaceId;
+  if (!wsId) return;
+
+  const savedState = await invoke<{
+    sidebarOpen?: boolean;
+    rightPanelOpen?: boolean;
+    rightPanelActiveView?: string;
+    terminalFullscreen?: boolean;
+    previewFile?: string | null;
+    activePluginName?: string | null;
+    layoutJson?: Record<string, unknown>;
+    tabs?: Array<{ id?: string; sessionType: string; cliSessionId?: string; exited?: boolean; customName?: string }>;
+    activeTabIndex?: number;
+  } | null>("get_project_ui_state", {
+    workspaceId: wsId,
+    path: projectPath,
+  });
+
+  if (!savedState) return;
+
+  // Dynamic imports
+  const [
+    { useTerminalTabsStore },
+    { useTilingLayoutStore },
+    { useFileTreeStore },
+    { useRightPanelStore },
+    { usePluginsStore },
+  ] = await Promise.all([
+    import("./terminal-tabs"),
+    import("./tiling-layout"),
+    import("./file-tree"),
+    import("./right-panel"),
+    import("./plugins"),
+  ]);
+
+  if (savedState.sidebarOpen !== undefined) {
+    useFileTreeStore.setState({ isOpen: savedState.sidebarOpen });
+  }
+
+  if (savedState.activePluginName !== undefined) {
+    usePluginsStore.getState().setActivePlugin(savedState.activePluginName);
+  }
+
+  if (savedState.rightPanelOpen !== undefined) {
+    const hasPlugin = usePluginsStore.getState().activePluginName !== null;
+    useRightPanelStore.setState({
+      isOpen: savedState.rightPanelOpen && hasPlugin,
+      ...(savedState.rightPanelActiveView ? { activeView: savedState.rightPanelActiveView as "empty" | "plugin" | "marketplace" } : {}),
+    });
+  }
+
+  if (savedState.terminalFullscreen !== undefined) {
+    useTerminalTabsStore.setState({ isTerminalFullscreen: savedState.terminalFullscreen });
+  }
+
+  // Restore tiling layout
+  if (savedState.layoutJson) {
+    const { parseLayoutJson } = await import("@/lib/layout-migration");
+    let layout = parseLayoutJson(savedState.layoutJson);
+
+    const projectTabs = useTerminalTabsStore.getState().getTabsForProject(projectPath);
+    if (projectTabs.length === 0) {
+      const { stripProjectBlocksFromJson } = await import("./tiling-layout");
+      layout = stripProjectBlocksFromJson(layout);
+    }
+
+    useTilingLayoutStore.getState().loadFromJson(layout);
+  }
+
+  // Restore terminal tabs from disk on first visit in this session
+  if (savedState.tabs?.length) {
+    const existingTabs = useTerminalTabsStore.getState().getTabsForProject(projectPath);
+    if (existingTabs.length === 0) {
+      const tabsStore = useTerminalTabsStore.getState();
+      for (const tab of savedState.tabs) {
+        const id = tab.id || tabsStore.nextTabId();
+        tabsStore.registerTab(
+          id,
+          projectPath,
+          (tab.sessionType || "claude") as import("@/lib/cli-registry").SessionType,
+          tab.customName,
+        );
+        if (tab.cliSessionId) tabsStore.setCliSessionId(id, tab.cliSessionId);
+        if (tab.exited) tabsStore.markTabExited(id);
+      }
+    }
+  }
+}
+
 // Catppuccin Mocha palette colors for project icons (excluding too-dark/light)
 const PROJECT_COLORS = [
   "#cba6f7", // mauve (brand)
@@ -46,6 +185,7 @@ interface ProjectsState {
   unreadProjects: Set<string>;
   thinkingProjects: Set<string>;
   notifiedProjects: Set<string>;
+  notificationMessages: Record<string, string>;
 
   loadProjects: () => Promise<void>;
   addProject: (projectPath: string) => Promise<void>;
@@ -60,8 +200,10 @@ interface ProjectsState {
   setProjectSessionState: (projectPath: string, state: SessionState) => void;
   markProjectAsRead: (projectPath: string) => void;
   setProjectThinking: (projectPath: string, isThinking: boolean) => void;
-  markProjectNotified: (projectPath: string) => void;
+  markProjectNotified: (projectPath: string, message?: string) => void;
   clearProjectNotified: (projectPath: string) => void;
+  setProjectNotificationMessage: (projectPath: string, message: string) => void;
+  clearProjectNotificationMessage: (projectPath: string) => void;
 }
 
 export const useProjectsStore = create<ProjectsState>((set, get) => ({
@@ -73,6 +215,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
   unreadProjects: new Set<string>(),
   thinkingProjects: new Set<string>(),
   notifiedProjects: new Set<string>(),
+  notificationMessages: {},
 
   loadProjects: async () => {
     set({ loading: true });
@@ -129,12 +272,21 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
 
   removeProject: (projectPath: string) => {
     const { projects, activeProjectPath } = get();
+    const isRemovingActive = activeProjectPath === projectPath;
     const newProjects = projects.filter((p) => p.path !== projectPath);
-    let newActive = activeProjectPath;
-    if (activeProjectPath === projectPath) {
-      newActive = newProjects[0]?.path ?? null;
+    const newActive = isRemovingActive ? (newProjects[0]?.path ?? null) : activeProjectPath;
+
+    // Guard persist effects: set isSwitchingProject when removing the active
+    // project AND there is another project to switch to.  This prevents
+    // App.tsx from saving the stale layout under the next project's path.
+    // The flag is reset by switchToProject (called by the UI after removal)
+    // or immediately if no projects remain.
+    if (isRemovingActive && newActive) {
+      set({ isSwitchingProject: true });
     }
+
     set({ projects: newProjects, activeProjectPath: newActive });
+
     // Persist removal to disk
     const workspaceId = useWorkspaceStore.getState().activeWorkspaceId;
     if (workspaceId) {
@@ -152,209 +304,102 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
 
     set({ isSwitchingProject: true });
     try {
+      // Pre-resolve dynamic imports
+      const [
+        { useTilingLayoutStore },
+        { useFilePreviewStore },
+        { useGitDiffStore },
+        { useTerminalTabsStore },
+        { useRightPanelStore },
+        { usePluginsStore },
+        { useFileTreeStore },
+        { useFocusModeStore },
+      ] = await Promise.all([
+        import("./tiling-layout"),
+        import("./file-preview"),
+        import("./git-diff"),
+        import("./terminal-tabs"),
+        import("./right-panel"),
+        import("./plugins"),
+        import("./file-tree"),
+        import("./focus-mode"),
+      ]);
 
-    // Pre-resolve all dynamic imports in parallel so the state changes
-    // below run in a single synchronous block (React 18 batches them).
-    const [
-      { useTilingLayoutStore },
-      { useFilePreviewStore },
-      { useGitDiffStore },
-      { useTerminalTabsStore },
-      { useRightPanelStore },
-      { usePluginsStore },
-      { useFileTreeStore },
-      { useFocusModeStore },
-    ] = await Promise.all([
-      import("./tiling-layout"),
-      import("./file-preview"),
-      import("./git-diff"),
-      import("./terminal-tabs"),
-      import("./right-panel"),
-      import("./plugins"),
-      import("./file-tree"),
-      import("./focus-mode"),
-    ]);
-
-    // --- Synchronous state changes (React 18 batches into one render) ---
-
-    // Preserve focus mode across project switch: exit (restore outgoing panels
-    // for correct save), switch projects (restore new layout), then re-enter
-    // (create fresh snapshot for the new project's panel state).
-    const wasFocusMode = useFocusModeStore.getState().isActive;
-    if (wasFocusMode) {
-      useFocusModeStore.getState().exitFocusMode();
-    }
-
-    set({ activeProjectPath: projectPath });
-    get().markProjectAsRead(projectPath);
-    get().clearProjectNotified(projectPath);
-
-    const tilingStore = useTilingLayoutStore.getState();
-    const previewStore = useFilePreviewStore.getState();
-    const diffStore = useGitDiffStore.getState();
-    const tabsStore = useTerminalTabsStore.getState();
-    const rightPanelStore = useRightPanelStore.getState();
-    const pluginsStore = usePluginsStore.getState();
-    const fileTreeStore = useFileTreeStore.getState();
-
-    // Save outgoing project state
-    if (previousPath) {
-      tilingStore.saveLayoutForProject(previousPath);
-      previewStore.savePreviewForProject(previousPath);
-      diffStore.saveDiffForProject(previousPath);
-      tabsStore.saveActiveTabForProject(previousPath);
-      tabsStore.saveFullscreenForProject(previousPath);
-      rightPanelStore.saveStateForProject(previousPath);
-      pluginsStore.saveActivePluginForProject(previousPath);
-      fileTreeStore.saveSidebarStateForProject(previousPath);
-    }
-
-    // Restore incoming project state (non-layout stores first)
-    previewStore.restorePreviewForProject(projectPath);
-    diffStore.restoreDiffForProject(projectPath);
-    tabsStore.restoreActiveTabForProject(projectPath);
-    tabsStore.restoreFullscreenForProject(projectPath);
-    rightPanelStore.restoreStateForProject(projectPath);
-    pluginsStore.restoreActivePluginForProject(projectPath);
-    fileTreeStore.restoreSidebarStateForProject(projectPath);
-
-    // If there is a pinned plugin, ensure the right panel stays open regardless
-    // of per-project saved state (pinned plugin is always visible across all projects)
-    const { pinnedPluginName } = usePluginsStore.getState();
-    if (pinnedPluginName) {
-      usePluginsStore.getState().setActivePlugin(pinnedPluginName);
-      useRightPanelStore.setState({ isOpen: true, activeView: "plugin" });
-    }
-
-    // Layout restore LAST among sync changes so that when FlexLayout
-    // re-renders with the new model, all other stores already have the
-    // correct state for the incoming project.
-    const projectTabIds = new Set(
-      tabsStore.getTabsForProject(projectPath).map((t) => t.id),
-    );
-    tilingStore.restoreLayoutForProject(projectPath, projectTabIds);
-    tabsStore.ensureBlocksForProjectTabs(projectPath);
-
-    // Re-enter focus mode if it was active before the switch
-    if (wasFocusMode) {
-      useFocusModeStore.getState().enterFocusMode();
-    }
-
-    // --- Async operations below (separate render batch) ---
-
-    await fileTreeStore.openProjectPath(projectPath);
-
-    // Update the file-tree tab name with the project name
-    const updatedTree = useFileTreeStore.getState().tree;
-    if (updatedTree?.root.name) {
-      useTilingLayoutStore.getState().updateFileTreeTabName(updatedTree.root.name);
-    }
-
-    // Persist previous project's UI state to disk (fire-and-forget)
-    if (previousPath) {
-      const prevPreview = useFilePreviewStore.getState().previewByProject[previousPath];
-      const prevLayoutJson = useTilingLayoutStore.getState().layoutByProject[previousPath];
-      const wsId = useWorkspaceStore.getState().activeWorkspaceId;
-      if (wsId) {
-        invoke("save_project_ui_state", {
-          workspaceId: wsId,
-          path: previousPath,
-          state: {
-            sidebarOpen: useFileTreeStore.getState().isOpenByProject[previousPath] ?? true,
-            rightPanelOpen: rightPanelStore.isOpenByProject[previousPath] ?? false,
-            terminalFullscreen: tabsStore.isFullscreenByProject[previousPath] ?? false,
-            previewFile: prevPreview?.currentFile ?? null,
-            layoutJson: prevLayoutJson as Record<string, unknown> | undefined,
-            ...tabsStore.serializeTabsForSave(previousPath),
-          },
-        }).catch(() => {});
+      // Exit focus mode for correct save
+      const wasFocusMode = useFocusModeStore.getState().isActive;
+      if (wasFocusMode) {
+        useFocusModeStore.getState().exitFocusMode();
       }
-    }
 
-    // Load persisted UI state for the new project from disk
-    try {
-      const savedState = await invoke<{
-        sidebarOpen?: boolean;
-        rightPanelOpen?: boolean;
-        terminalFullscreen?: boolean;
-        previewFile?: string | null;
-        browserOpen?: boolean;
-        browserUrl?: string;
-        layoutJson?: Record<string, unknown>;
-        tabs?: Array<{ id?: string; sessionType: string; cliSessionId?: string; exited?: boolean }>;
-        activeTabIndex?: number;
-      } | null>("get_project_ui_state", {
-        workspaceId: useWorkspaceStore.getState().activeWorkspaceId ?? "",
-        path: projectPath,
+      // 1. SAVE outgoing project to disk (AWAITED)
+      if (previousPath) {
+        await saveCurrentProjectToDisk(previousPath);
+      }
+
+      // Keep git diff data caches in sync (these are data caches, not UI state)
+      const diffStore = useGitDiffStore.getState();
+      if (previousPath) {
+        diffStore.saveDiffForProject(previousPath);
+      }
+      diffStore.restoreDiffForProject(projectPath);
+
+      // 2. Set new active project
+      set({ activeProjectPath: projectPath });
+      get().markProjectAsRead(projectPath);
+      get().clearProjectNotified(projectPath);
+
+      // 3. Reset stores to defaults (prevents stale flash)
+      useFilePreviewStore.setState({
+        currentFile: null, content: null, error: null,
+        isEditing: false, editContent: null, editDirty: false,
       });
+      useGitDiffStore.getState().clearSelection();
+      useTerminalTabsStore.setState({ isTerminalFullscreen: false });
+      useRightPanelStore.setState({ isOpen: false, activeView: "empty" });
 
-      if (savedState) {
-        // Only apply disk state if we don't have in-memory state yet
-        const hasInMemoryFileTree = useFileTreeStore.getState().isOpenByProject[projectPath] !== undefined;
-        if (!hasInMemoryFileTree) {
-          if (savedState.sidebarOpen !== undefined) {
-            useFileTreeStore.setState({ isOpen: savedState.sidebarOpen });
-          }
-          if (savedState.rightPanelOpen !== undefined) {
-            const hasActivePlugin = usePluginsStore.getState().activePluginName !== null;
-            useRightPanelStore.setState({ isOpen: savedState.rightPanelOpen && hasActivePlugin });
-          }
-          if (savedState.terminalFullscreen !== undefined) {
-            useTerminalTabsStore.setState({ isTerminalFullscreen: savedState.terminalFullscreen });
-          }
-        }
+      // 4. Load file tree for new project
+      await useFileTreeStore.getState().openProjectPath(projectPath);
+      const updatedTree = useFileTreeStore.getState().tree;
+      if (updatedTree?.root.name) {
+        useTilingLayoutStore.getState().updateFileTreeTabName(updatedTree.root.name);
+      }
 
-        // Restore tiling layout from disk if no in-memory layout exists
-        if (savedState.layoutJson) {
-          const hasInMemoryLayout = useTilingLayoutStore.getState().layoutByProject[projectPath] !== undefined;
-          if (!hasInMemoryLayout) {
-            const { parseLayoutJson } = await import("@/lib/layout-migration");
-            let layout = parseLayoutJson(savedState.layoutJson);
+      // 5. Load UI state from disk (single source of truth)
+      try {
+        await loadProjectFromDisk(projectPath);
+      } catch {
+        // Non-fatal: disk state load failure
+      }
 
-            // Safety net: if the project has no registered terminal tabs,
-            // strip any terminal/browser blocks from the loaded layout.
-            // This prevents stale layout data (e.g. from a race condition
-            // where the persist effect saved another project's layout under
-            // this path) from leaking terminal blocks into a clean project.
-            const projectTabs = useTerminalTabsStore.getState().getTabsForProject(projectPath);
-            if (projectTabs.length === 0) {
-              const { stripProjectBlocksFromJson } = await import("./tiling-layout");
-              layout = stripProjectBlocksFromJson(layout);
-            }
+      // 6. Pinned plugin override (after disk load so it takes precedence)
+      const { pinnedPluginName } = usePluginsStore.getState();
+      if (pinnedPluginName) {
+        usePluginsStore.getState().setActivePlugin(pinnedPluginName);
+        useRightPanelStore.setState({ isOpen: true, activeView: "plugin" });
+      }
 
-            useTilingLayoutStore.getState().loadFromJson(layout);
-          }
-        }
+      // 7. Ensure terminal blocks exist for loaded tabs
+      useTerminalTabsStore.getState().ensureBlocksForProjectTabs(projectPath);
 
-        // Restore terminal tabs from disk ONLY on first visit in this
-        // session (no in-memory layout yet).  Once we've saved an
-        // in-memory layout for a project (via saveLayoutForProject on
-        // switch-away), the in-memory state is authoritative and we must
-        // NOT overwrite it with potentially stale disk data — the
-        // fire-and-forget disk save may not have completed yet (race).
-        if (savedState.tabs?.length) {
-          const existingProjectTabs = useTerminalTabsStore.getState().getTabsForProject(projectPath);
-          const hasInMemoryLayout = useTilingLayoutStore.getState().layoutByProject[projectPath] !== undefined;
-          if (existingProjectTabs.length === 0 && !hasInMemoryLayout) {
-            const currentTabsStore = useTerminalTabsStore.getState();
-            for (const tab of savedState.tabs) {
-              const id = tab.id || currentTabsStore.nextTabId();
-              currentTabsStore.registerTab(id, projectPath, (tab.sessionType || "claude") as import("@/lib/cli-registry").SessionType);
-              if (tab.cliSessionId) currentTabsStore.setCliSessionId(id, tab.cliSessionId);
-              if (tab.exited) currentTabsStore.markTabExited(id);
-            }
-          }
+      // 8. Restore active tab for this project
+      const projectTabs = useTerminalTabsStore.getState().getTabsForProject(projectPath);
+      if (projectTabs.length > 0) {
+        const activeTabId = useTerminalTabsStore.getState().activeTabId;
+        if (!activeTabId || !projectTabs.some((t) => t.id === activeTabId)) {
+          useTerminalTabsStore.setState({ activeTabId: projectTabs[0].id });
         }
       }
-    } catch {
-      // Non-fatal: disk state load failure
-    }
 
-    // Load icon if not already loaded
-    const project = get().projects.find((p) => p.path === projectPath);
-    if (project && project.iconPath === null) {
-      await get().loadProjectIcon(projectPath);
-    }
+      // 9. Re-enter focus mode
+      if (wasFocusMode) {
+        useFocusModeStore.getState().enterFocusMode();
+      }
+
+      // 10. Load icon if needed
+      const project = get().projects.find((p) => p.path === projectPath);
+      if (project && project.iconPath === null) {
+        await get().loadProjectIcon(projectPath);
+      }
     } finally {
       set({ isSwitchingProject: false });
     }
@@ -442,12 +487,15 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
     });
   },
 
-  markProjectNotified: (projectPath) => {
+  markProjectNotified: (projectPath, message) => {
     set((s) => {
       if (s.activeProjectPath === projectPath) return {};
       const next = new Set(s.notifiedProjects);
       next.add(projectPath);
-      return { notifiedProjects: next };
+      const msgs = message
+        ? { ...s.notificationMessages, [projectPath]: message }
+        : s.notificationMessages;
+      return { notifiedProjects: next, notificationMessages: msgs };
     });
   },
 
@@ -455,7 +503,23 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
     set((s) => {
       const next = new Set(s.notifiedProjects);
       next.delete(projectPath);
-      return { notifiedProjects: next };
+      const msgs = { ...s.notificationMessages };
+      delete msgs[projectPath];
+      return { notifiedProjects: next, notificationMessages: msgs };
+    });
+  },
+
+  setProjectNotificationMessage: (projectPath, message) => {
+    set((s) => ({
+      notificationMessages: { ...s.notificationMessages, [projectPath]: message },
+    }));
+  },
+
+  clearProjectNotificationMessage: (projectPath) => {
+    set((s) => {
+      const next = { ...s.notificationMessages };
+      delete next[projectPath];
+      return { notificationMessages: next };
     });
   },
 }));
