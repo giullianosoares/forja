@@ -12,7 +12,7 @@ interface ModifierHeldState {
 
 let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 
-const ACTIVATION_DELAY = 200;
+const ACTIVATION_DELAY = 100;
 const FADEOUT_DURATION = 150;
 
 export const useModifierHeldStore = create<ModifierHeldState>((set) => ({

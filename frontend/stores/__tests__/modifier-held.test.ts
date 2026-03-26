@@ -23,9 +23,9 @@ describe("modifier-held store", () => {
     expect(useModifierHeldStore.getState().visible).toBe(false);
   });
 
-  it("becomes visible after 200ms delay", () => {
+  it("becomes visible after 100ms delay", () => {
     useModifierHeldStore.getState().setModifier("cmd-shift");
-    vi.advanceTimersByTime(199);
+    vi.advanceTimersByTime(99);
     expect(useModifierHeldStore.getState().visible).toBe(false);
     vi.advanceTimersByTime(1);
     expect(useModifierHeldStore.getState().visible).toBe(true);
@@ -33,7 +33,7 @@ describe("modifier-held store", () => {
 
   it("clearModifier fades out: visible false immediately, activeModifier null after 150ms", () => {
     useModifierHeldStore.getState().setModifier("ctrl");
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(100);
     expect(useModifierHeldStore.getState().visible).toBe(true);
     useModifierHeldStore.getState().clearModifier();
     expect(useModifierHeldStore.getState().visible).toBe(false);
@@ -52,9 +52,9 @@ describe("modifier-held store", () => {
 
   it("changing modifier resets the timer", () => {
     useModifierHeldStore.getState().setModifier("cmd-shift");
-    vi.advanceTimersByTime(150);
+    vi.advanceTimersByTime(50);
     useModifierHeldStore.getState().setModifier("ctrl");
-    vi.advanceTimersByTime(150);
+    vi.advanceTimersByTime(50);
     expect(useModifierHeldStore.getState().visible).toBe(false);
     vi.advanceTimersByTime(50);
     expect(useModifierHeldStore.getState().visible).toBe(true);
