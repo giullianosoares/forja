@@ -14,7 +14,9 @@ function isInputFocused(): boolean {
   const el = document.activeElement;
   if (!el) return false;
   const tag = el.tagName.toLowerCase();
-  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  if (tag === "input" || tag === "select") return true;
+  // Textarea: allow xterm.js (uses hidden textarea for input capture)
+  if (tag === "textarea" && !el.closest(".xterm")) return true;
   if ((el as HTMLElement).isContentEditable) return true;
   if (el.closest(".monaco-editor")) return true;
   return false;
