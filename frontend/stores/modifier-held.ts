@@ -10,41 +10,19 @@ interface ModifierHeldState {
   cancelBadges: () => void;
 }
 
-let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-
-const ACTIVATION_DELAY = 100;
-const FADEOUT_DURATION = 150;
-
 export const useModifierHeldStore = create<ModifierHeldState>((set) => ({
   activeModifier: null,
   visible: false,
 
   setModifier: (combo) => {
-    if (pendingTimer) clearTimeout(pendingTimer);
-    set({ activeModifier: combo, visible: false });
-    pendingTimer = setTimeout(() => {
-      set({ visible: true });
-      pendingTimer = null;
-    }, ACTIVATION_DELAY);
+    set({ activeModifier: combo, visible: true });
   },
 
   clearModifier: () => {
-    if (pendingTimer) {
-      clearTimeout(pendingTimer);
-      pendingTimer = null;
-    }
-    set({ visible: false });
-    pendingTimer = setTimeout(() => {
-      set({ activeModifier: null });
-      pendingTimer = null;
-    }, FADEOUT_DURATION);
+    set({ activeModifier: null, visible: false });
   },
 
   cancelBadges: () => {
-    if (pendingTimer) {
-      clearTimeout(pendingTimer);
-      pendingTimer = null;
-    }
     set({ activeModifier: null, visible: false });
   },
 }));
