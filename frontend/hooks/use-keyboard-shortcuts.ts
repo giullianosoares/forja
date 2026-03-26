@@ -287,7 +287,7 @@ export function useKeyboardShortcuts({
       // Ctrl+Tab / Ctrl+Shift+Tab: cycle ALL tabs across ALL panes (like Chrome)
       if (event.ctrlKey && event.key === "Tab") {
         event.preventDefault();
-        useModifierHeldStore.getState().cancelBadges();
+        // Don't cancelBadges — Ctrl is still held, user may keep cycling
         const direction = event.shiftKey ? "backward" : "forward";
         const nextTabId = tilingStore.cycleGlobalTab(direction);
         if (nextTabId) {
@@ -308,7 +308,7 @@ export function useKeyboardShortcuts({
           event.key === "ArrowUp")
       ) {
         event.preventDefault();
-        useModifierHeldStore.getState().cancelBadges();
+        // Don't cancelBadges — Cmd+Shift is still held, user may keep navigating
         const dirMap: Record<string, "right" | "left" | "down" | "up"> = {
           ArrowRight: "right",
           ArrowLeft: "left",

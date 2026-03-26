@@ -31,6 +31,14 @@ export function useModifierHeld(): void {
     function handleKeyDown(e: KeyboardEvent) {
       if (isInputFocused()) return;
       if (!isModifierKey(e.key)) {
+        // A non-modifier key was pressed (e.g., Arrow, digit, letter).
+        // Check if modifier combo is still held — if so, keep badges visible.
+        const combo = detectModifierCombo(e);
+        if (combo && store().activeModifier === combo) {
+          // Modifier still held (e.g., Cmd+Shift+Arrow) — don't cancel
+          return;
+        }
+        // Modifier released or changed — cancel
         if (store().activeModifier) {
           store().cancelBadges();
         }
