@@ -20,9 +20,12 @@ interface FilePreviewState {
   isEditing: boolean;
   editContent: string | null;
   editDirty: boolean;
+  cursorPosition: { lineNumber: number; column: number } | null;
+  scrollTop: number | null;
   previewByProject: Record<string, { currentFile: string; content: FileContent | null } | null>;
   isPinned: boolean;
   previewTabId: string | null;
+  showUnsavedDialog: boolean;
 
   togglePreview: () => void;
   openPreview: () => void;
@@ -36,7 +39,9 @@ interface FilePreviewState {
   reloadCurrentFileIfChanged: (projectPath: string, changedPaths: string[]) => Promise<void>;
   clearError: () => void;
   setEditing: (editing: boolean) => void;
+  toggleEditing: () => void;
   setEditContent: (content: string) => void;
+  setShowUnsavedDialog: (show: boolean) => void;
   saveFile: () => Promise<void>;
   savePreviewForProject: (projectPath: string) => void;
   restorePreviewForProject: (projectPath: string) => void;
@@ -51,9 +56,12 @@ export const useFilePreviewStore = create<FilePreviewState>((set, get) => ({
   isEditing: false,
   editContent: null,
   editDirty: false,
+  cursorPosition: null,
+  scrollTop: null,
   previewByProject: {},
   isPinned: false,
   previewTabId: null,
+  showUnsavedDialog: false,
 
   togglePreview: () => {
     const { isOpen } = get();
@@ -117,6 +125,8 @@ export const useFilePreviewStore = create<FilePreviewState>((set, get) => ({
       isEditing: false,
       editContent: null,
       editDirty: false,
+      cursorPosition: null,
+      scrollTop: null,
       isPinned: pin,
       previewTabId: pin ? null : "block-file-preview",
     });
@@ -251,8 +261,19 @@ export const useFilePreviewStore = create<FilePreviewState>((set, get) => ({
       editDirty: false,
     })),
 
+  toggleEditing: () => {
+    const { isEditing, editDirty } = get();
+    if (isEditing && editDirty) {
+      set({ showUnsavedDialog: true });
+    } else {
+      get().setEditing(!isEditing);
+    }
+  },
+
   setEditContent: (content) =>
     set({ editContent: content, editDirty: true }),
+
+  setShowUnsavedDialog: (show) => set({ showUnsavedDialog: show }),
 
   saveFile: async () => {
     const state = get();

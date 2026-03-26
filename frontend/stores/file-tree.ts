@@ -29,11 +29,11 @@ export function findNode(root: FileNode, targetPath: string): FileNode | null {
   if (root.path === targetPath) return root;
   if (!root.children) return null;
   for (const child of root.children) {
-    if (!child.isDir) continue;
-    if (targetPath !== child.path && !targetPath.startsWith(child.path + "/"))
-      continue;
-    const found = findNode(child, targetPath);
-    if (found) return found;
+    if (child.path === targetPath) return child;
+    if (child.isDir && targetPath.startsWith(child.path + "/")) {
+      const found = findNode(child, targetPath);
+      if (found) return found;
+    }
   }
   return null;
 }
@@ -87,6 +87,8 @@ interface FileTreeState {
   focusedPath: string | null;
   selectedPaths: Record<string, boolean>;
   renamingPath: string | null;
+  creatingInDir: string | null;
+  creatingType: "file" | "dir" | null;
   clipboard: { paths: string[]; operation: "copy" | "cut" } | null;
   pendingDeletePaths: string[] | null;
 
@@ -109,6 +111,8 @@ interface FileTreeState {
   clearSelection: () => void;
   startRename: (path: string) => void;
   stopRename: () => void;
+  startCreating: (dirPath: string, type: "file" | "dir") => void;
+  stopCreating: () => void;
   saveSidebarStateForProject: (projectPath: string) => void;
   restoreSidebarStateForProject: (projectPath: string) => void;
   copyToClipboard: () => void;
@@ -154,6 +158,8 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => {
     focusedPath: null,
     selectedPaths: {},
     renamingPath: null,
+    creatingInDir: null,
+    creatingType: null,
     clipboard: null,
     pendingDeletePaths: null,
 
@@ -398,6 +404,17 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => {
     startRename: (path) => set({ renamingPath: path }),
 
     stopRename: () => set({ renamingPath: null }),
+
+    startCreating: (dirPath, type) => {
+      // Auto-expand the target dir
+      const { expandedPaths } = get();
+      if (!expandedPaths[dirPath]) {
+        set({ expandedPaths: { ...expandedPaths, [dirPath]: true } });
+      }
+      set({ creatingInDir: dirPath, creatingType: type });
+    },
+
+    stopCreating: () => set({ creatingInDir: null, creatingType: null }),
 
     saveSidebarStateForProject: (projectPath: string) => {
       const { isOpen, isOpenByProject } = get();

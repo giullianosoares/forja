@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useFileTreeStore, findNode } from "@/stores/file-tree";
+import { useFilePreviewStore } from "@/stores/file-preview";
 import { flattenVisibleNodes, type FlatNode } from "@/components/file-tree-sidebar";
 import { invoke } from "@/lib/ipc";
 
@@ -24,24 +25,68 @@ export function handleFileTreeKeyDown(e: React.KeyboardEvent): void {
 
   const currentNode = currentIndex >= 0 ? flatNodes[currentIndex] : null;
 
-  // Cmd/Ctrl+C — copy to clipboard
   const mod = e.metaKey || e.ctrlKey;
+  const alt = e.altKey;
+  const shift = e.shiftKey;
   const key = e.key.toLowerCase();
 
-  if (mod && key === "c") {
+  // ⌘↩ — Open file preview or toggle editor
+  if (mod && e.key === "Enter") {
     e.preventDefault();
-    useFileTreeStore.getState().copyToClipboard();
+    e.stopPropagation();
+    // Use currentNode from flatNodes (same source as arrow keys — always reliable)
+    const targetNode = currentNode;
+    if (targetNode && !targetNode.node.isDir) {
+      const previewStore = useFilePreviewStore.getState();
+      if (previewStore.currentFile === targetNode.node.path && !previewStore.isEditing) {
+        previewStore.setEditing(true);
+      } else {
+        state.selectFile(targetNode.node.path);
+      }
+    }
     return;
   }
 
-  // Cmd/Ctrl+X — cut to clipboard
+  // ⇧⌥⌘C — Copy Relative Path
+  if (mod && alt && shift && key === "c" && focusedPath) {
+    e.preventDefault();
+    const projectPath = state.currentPath;
+    const relative = projectPath
+      ? focusedPath.replace(projectPath + "/", "")
+      : focusedPath;
+    navigator.clipboard.writeText(relative);
+    return;
+  }
+
+  // ⌥⌘C — Copy Path
+  if (mod && alt && key === "c" && focusedPath) {
+    e.preventDefault();
+    navigator.clipboard.writeText(focusedPath);
+    return;
+  }
+
+  // ⌥⌘R — Reveal in Finder
+  if (mod && alt && key === "r" && focusedPath) {
+    e.preventDefault();
+    invoke("reveal_in_finder", { path: focusedPath });
+    return;
+  }
+
+  // ⌘X — Cut to clipboard
   if (mod && key === "x") {
     e.preventDefault();
     useFileTreeStore.getState().cutToClipboard();
     return;
   }
 
-  // Cmd/Ctrl+V — paste from clipboard
+  // ⌘C — Copy to clipboard
+  if (mod && key === "c") {
+    e.preventDefault();
+    useFileTreeStore.getState().copyToClipboard();
+    return;
+  }
+
+  // ⌘V — Paste from clipboard
   if (mod && key === "v") {
     e.preventDefault();
     const store = useFileTreeStore.getState();
@@ -66,12 +111,35 @@ export function handleFileTreeKeyDown(e: React.KeyboardEvent): void {
     return;
   }
 
-  // Space — toggle selection of focused item
+  // ⌘⌫ — Delete
+  if (mod && (e.key === "Backspace" || e.key === "Delete")) {
+    e.preventDefault();
+    const store = useFileTreeStore.getState();
+    const selected = Object.keys(store.selectedPaths).filter((p) => store.selectedPaths[p]);
+    const pathsToDelete = selected.length > 0
+      ? selected
+      : store.focusedPath ? [store.focusedPath] : [];
+
+    if (pathsToDelete.length > 0) {
+      store.confirmDelete(pathsToDelete);
+    }
+    return;
+  }
+
+  // Space — open file (preview then editor) / expand dir
   if (e.key === " ") {
     e.preventDefault();
-    const focusedPath = useFileTreeStore.getState().focusedPath;
-    if (focusedPath) {
-      useFileTreeStore.getState().toggleSelect(focusedPath);
+    if (currentNode) {
+      if (currentNode.node.isDir) {
+        state.toggleExpanded(currentNode.node.path);
+      } else {
+        const previewStore = useFilePreviewStore.getState();
+        if (previewStore.currentFile === currentNode.node.path && !previewStore.isEditing) {
+          previewStore.setEditing(true);
+        } else {
+          state.selectFile(currentNode.node.path);
+        }
+      }
     }
     return;
   }
@@ -79,14 +147,13 @@ export function handleFileTreeKeyDown(e: React.KeyboardEvent): void {
   // F2 — start rename of focused item
   if (e.key === "F2") {
     e.preventDefault();
-    const focusedPath = useFileTreeStore.getState().focusedPath;
     if (focusedPath) {
       useFileTreeStore.getState().startRename(focusedPath);
     }
     return;
   }
 
-  // Delete / Backspace — confirm delete of selected or focused items
+  // Delete / Backspace (sem Cmd) — also delete
   if (e.key === "Delete" || e.key === "Backspace") {
     e.preventDefault();
     const store = useFileTreeStore.getState();
@@ -125,21 +192,29 @@ export function handleFileTreeKeyDown(e: React.KeyboardEvent): void {
     }
 
     case "Enter": {
-      if (!currentNode) return;
+      // Ignore Enter with modifiers (e.g. ⇧⌘↩ for toggle editor)
+      if (!currentNode || mod || shift || alt) return;
       e.preventDefault();
       e.stopPropagation();
-      if (currentNode.node.isDir) {
-        state.toggleExpanded(currentNode.node.path);
-      } else {
-        state.pinFile(currentNode.node.path);
-      }
+      // Enter: rename (like VS Code)
+      state.startRename(currentNode.node.path);
       break;
     }
 
     case "ArrowRight": {
-      if (!currentNode || !currentNode.node.isDir) return;
+      if (!currentNode) return;
       e.preventDefault();
       e.stopPropagation();
+      // ArrowRight on file: open preview/editor
+      if (!currentNode.node.isDir) {
+        const previewStore = useFilePreviewStore.getState();
+        if (previewStore.currentFile === currentNode.node.path && !previewStore.isEditing) {
+          previewStore.setEditing(true);
+        } else {
+          state.selectFile(currentNode.node.path);
+        }
+        break;
+      }
       if (!expandedPaths[currentNode.node.path]) {
         state.toggleExpanded(currentNode.node.path);
         if (

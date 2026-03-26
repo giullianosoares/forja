@@ -12,7 +12,9 @@ import {
 } from "flexlayout-react";
 import {
   ChevronsDownUp,
+  FilePlus,
   FileText,
+  FolderPlus,
   FolderTree,
   Globe,
   MessageCircle,
@@ -26,7 +28,7 @@ import { useCommandPaletteStore } from "@/stores/command-palette";
 import { useTerminalTabsStore } from "@/stores/terminal-tabs";
 import { useFilePreviewStore } from "@/stores/file-preview";
 import { useAgentChatStore } from "@/stores/agent-chat";
-import { useFileTreeStore } from "@/stores/file-tree";
+import { useFileTreeStore, findNode } from "@/stores/file-tree";
 import { useSessionStateStore } from "@/stores/session-state";
 import { blockFactory } from "@/components/block-factory";
 import { ForjaEmptyState } from "@/components/forja-empty-state";
@@ -119,6 +121,16 @@ export function TilingLayout() {
     if (action.type === Actions.DELETE_TAB) {
       const nodeId = action.data?.node as string | undefined;
       if (nodeId) {
+        // Block closing file-preview tab if there are unsaved changes
+        if (nodeId === "block-file-preview") {
+          const previewStore = useFilePreviewStore.getState();
+          if (previewStore.isEditing && previewStore.editDirty) {
+            // Show unsaved dialog and block the close
+            previewStore.setShowUnsavedDialog(true);
+            return undefined as unknown as Action;
+          }
+        }
+
         // If it's a terminal tab, remove from terminal-tabs store
         const tabStore = useTerminalTabsStore.getState();
         if (tabStore.hasTab(nodeId)) {
@@ -167,6 +179,17 @@ export function TilingLayout() {
       queueMicrotask(() => {
         useTilingLayoutStore.getState().syncTabCount();
       });
+
+      // After closing a tab, focus file-tree if nothing else remains
+      requestAnimationFrame(() => {
+        const store = useTilingLayoutStore.getState();
+        const active = store.model.getActiveTabset();
+        const selected = active?.getSelectedNode();
+        if (!selected || selected.getId() === "tab-file-tree") {
+          const container = document.querySelector<HTMLElement>('[data-testid="file-tree-sidebar"]')?.closest<HTMLElement>('[tabindex="0"]');
+          container?.focus();
+        }
+      });
     }
     return action;
   }, []);
@@ -193,6 +216,19 @@ export function TilingLayout() {
     return blockFactory(node);
   }, []);
 
+  const startFileTreeCreation = useCallback((type: "file" | "dir") => {
+    const store = useFileTreeStore.getState();
+    const projectPath = store.tree?.root.path;
+    if (!projectPath) return;
+    let targetDir = projectPath;
+    if (store.focusedPath) {
+      const node = store.tree ? findNode(store.tree.root, store.focusedPath) : null;
+      if (node?.isDir) targetDir = store.focusedPath;
+      else if (store.focusedPath) targetDir = store.focusedPath.substring(0, store.focusedPath.lastIndexOf("/"));
+    }
+    store.startCreating(targetDir, type);
+  }, []);
+
   const onRenderTabSet = useCallback(
     (
       node: TabSetNode | BorderNode,
@@ -211,18 +247,48 @@ export function TilingLayout() {
       const hasFileTree = children.some(
         (child) => (child as TabNode).getComponent?.() === "file-tree",
       );
-      // File-tree actions: refresh + collapse-all (next to maximize icon)
+      // File-tree: disable maximize and add action buttons
       if (hasFileTree) {
+        // Ensure maximize is disabled for this tabset (persists across sessions)
+        if ((node as TabSetNode).isEnableMaximize?.()) {
+          model.doAction(Actions.updateNodeAttributes(node.getId(), { enableMaximize: false }));
+        }
         renderValues.buttons.push(
+          <button
+            key="new-file"
+            type="button"
+            title="New File"
+            aria-label="New file"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-ctp-overlay1 transition-colors hover:bg-ctp-surface0 hover:text-ctp-text"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              startFileTreeCreation("file");
+            }}
+          >
+            <FilePlus className="h-3 w-3" strokeWidth={1.5} />
+          </button>,
+          <button
+            key="new-folder"
+            type="button"
+            title="New Folder"
+            aria-label="New folder"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-ctp-overlay1 transition-colors hover:bg-ctp-surface0 hover:text-ctp-text"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              startFileTreeCreation("dir");
+            }}
+          >
+            <FolderPlus className="h-3 w-3" strokeWidth={1.5} />
+          </button>,
           <button
             key="refresh-tree"
             type="button"
             title="Refresh file tree"
             aria-label="Refresh file tree"
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-ctp-overlay1 transition-colors hover:bg-ctp-surface0 hover:text-ctp-text"
-            onMouseDown={(e) => {
-              e.stopPropagation();
-            }}
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               useFileTreeStore.getState().refreshTree();
@@ -236,9 +302,7 @@ export function TilingLayout() {
             title="Collapse all folders"
             aria-label="Collapse all folders"
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-ctp-overlay1 transition-colors hover:bg-ctp-surface0 hover:text-ctp-text"
-            onMouseDown={(e) => {
-              e.stopPropagation();
-            }}
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               useFileTreeStore.getState().collapseAll();
