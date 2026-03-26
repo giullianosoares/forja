@@ -65,7 +65,16 @@ export function useModifierHeld(): void {
     }
 
     function handleKeyUp(e: KeyboardEvent) {
-      if (isModifierKey(e.key) && store().activeModifier) {
+      if (!isModifierKey(e.key) || !store().activeModifier) return;
+      // Check if another modifier combo is still held after this key release
+      const remaining = detectModifierCombo(e);
+      if (remaining) {
+        // Transition to the remaining combo (e.g., Cmd+Shift → Cmd)
+        if (store().activeModifier !== remaining) {
+          useModifierHeldStore.getState().setModifier(remaining);
+        }
+      } else {
+        // All modifiers released
         store().clearModifier();
       }
     }
