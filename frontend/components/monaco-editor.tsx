@@ -160,10 +160,37 @@ export function MonacoEditor({
 
   return (
     <div
-      ref={containerRef}
       data-testid="monaco-editor-container"
       className={className}
-      style={{ width: "100%", height: "100%" }}
-    />
+      style={{ width: "100%", height: "100%", position: "relative" }}
+    >
+      <div
+        ref={containerRef}
+        style={{ width: "100%", height: "100%" }}
+      />
+      {readOnly && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 4,
+            cursor: "default",
+          }}
+          onWheel={(e) => {
+            // Pass scroll through to the editor
+            const editorEl = containerRef.current?.querySelector(".monaco-scrollable-element");
+            if (editorEl) {
+              editorEl.dispatchEvent(new WheelEvent("wheel", {
+                deltaX: e.deltaX,
+                deltaY: e.deltaY,
+                deltaMode: e.deltaMode,
+                bubbles: true,
+              }));
+            }
+          }}
+          aria-hidden="true"
+        />
+      )}
+    </div>
   );
 }
