@@ -191,6 +191,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     await get().setActiveWorkspace(workspaceId);
 
+    // Guard the reactive persist effect in App.tsx from overwriting the
+    // outgoing project's freshly saved state with empty tabs/layout.
+    useProjectsStore.setState({ isSwitchingProject: true });
+
     // Clear existing trees and expanded paths before loading the new workspace's projects
     useFileTreeStore.setState({
       trees: {},
@@ -284,6 +288,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         }
       }
     }
+
+    // Allow the reactive persist effect in App.tsx to resume normal saves.
+    useProjectsStore.setState({ isSwitchingProject: false });
   },
 }));
 

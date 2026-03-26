@@ -864,5 +864,53 @@ describe("useWorkspaceStore", () => {
       expect(tabsState.tabs[0].id).toBe("tab-resumed");
       expect(tabsState.tabs[0].cliSessionId).toBe("abc-session-9f3e21");
     });
+
+    it("sets isSwitchingProject during workspace activation to guard reactive saves", async () => {
+      const ws1 = makeWorkspace({
+        id: "ws-guard-1",
+        projects: [makeProject("/project/old")],
+        lastActiveProjectPath: "/project/old",
+      });
+      const ws2 = makeWorkspace({
+        id: "ws-guard-2",
+        projects: [makeProject("/project/new")],
+        lastActiveProjectPath: "/project/new",
+      });
+      useWorkspaceStore.setState({
+        workspaces: [ws1, ws2],
+        activeWorkspaceId: "ws-guard-1",
+      });
+
+      useFileTreeStore.setState({
+        loadProjectTree: vi.fn().mockResolvedValue(undefined),
+        openProjectPath: vi.fn(),
+      });
+
+      // Pre-populate tabs for the outgoing workspace
+      useTerminalTabsStore.getState().addTab("tab-old", "/project/old", "claude");
+      useTerminalTabsStore.getState().renameTab("tab-old", "My Custom Tab");
+
+      // Track isSwitchingProject across the activation
+      const observed: boolean[] = [];
+      const unsub = useProjectsStore.subscribe((state) => {
+        observed.push(state.isSwitchingProject);
+      });
+
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "set_active_workspace") return Promise.resolve(undefined);
+        if (cmd === "get_workspace_projects") return Promise.resolve([]);
+        if (cmd === "get_project_ui_state") return Promise.resolve({ tabs: [], activeTabIndex: 0 });
+        if (cmd === "close_pty") return Promise.resolve(undefined);
+        return Promise.resolve(undefined);
+      });
+
+      await useWorkspaceStore.getState().activateWorkspace("ws-guard-2");
+      unsub();
+
+      // isSwitchingProject must have been true at some point during activation
+      expect(observed).toContain(true);
+      // And must be false after completion
+      expect(useProjectsStore.getState().isSwitchingProject).toBe(false);
+    });
   });
 });

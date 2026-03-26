@@ -5,6 +5,7 @@ import {
   useWorkspaceStore,
   type WorkspaceIcon,
 } from "@/stores/workspace";
+import { invoke } from "@/lib/ipc";
 import { useFileTreeStore } from "@/stores/file-tree";
 import {
   getWorkspaceIcon,
@@ -27,7 +28,7 @@ export function WorkspaceSwitcher() {
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const loadWorkspaces = useWorkspaceStore((s) => s.loadWorkspaces);
-  const activateWorkspace = useWorkspaceStore((s) => s.activateWorkspace);
+  const openWorkspaceInNewWindow = useWorkspaceStore((s) => s.openWorkspaceInNewWindow);
   const createWorkspace = useWorkspaceStore((s) => s.createWorkspace);
   const updateWorkspaceDetails = useWorkspaceStore(
     (s) => s.updateWorkspaceDetails
@@ -62,13 +63,40 @@ export function WorkspaceSwitcher() {
   }
 
   async function handleDelete(wsId: string) {
-    if (deleteConfirmId === wsId) {
-      await deleteWorkspace(wsId);
-      setEditingId(null);
-      setDeleteConfirmId(null);
-    } else {
+    if (deleteConfirmId !== wsId) {
       setDeleteConfirmId(wsId);
+      return;
     }
+
+    const otherWorkspaces = workspaces.filter((w) => w.id !== wsId);
+
+    if (otherWorkspaces.length === 0) {
+      // Last workspace — create a new default before deleting
+      await invoke("create_and_open_workspace");
+    } else {
+      // Ensure at least one other workspace has an open window
+      let anyOpen = false;
+      for (const other of otherWorkspaces) {
+        const open = await invoke<boolean>("is_workspace_window_open", {
+          workspaceId: other.id,
+        });
+        if (open) {
+          anyOpen = true;
+          break;
+        }
+      }
+      if (!anyOpen) {
+        // Open the most recently used other workspace
+        await openWorkspaceInNewWindow(otherWorkspaces[0].id);
+      }
+    }
+
+    await deleteWorkspace(wsId);
+    setEditingId(null);
+    setDeleteConfirmId(null);
+
+    // Close this window since the workspace no longer exists
+    invoke("window:close").catch(() => {});
   }
 
   async function handleSaveWorkspace() {
@@ -90,9 +118,8 @@ export function WorkspaceSwitcher() {
   }
 
   async function handleCreateNewWorkspace() {
-    const name = `New Workspace (${Math.random().toString(16).slice(2, 7)})`;
-    const ws = await createWorkspace(name);
-    await activateWorkspace(ws.id);
+    await invoke("create_and_open_workspace");
+    await loadWorkspaces();
     setIsOpen(false);
   }
 
@@ -304,12 +331,12 @@ export function WorkspaceSwitcher() {
               );
             }
 
-            // Inactive workspace
+            // Inactive workspace — open in a new window (or focus existing)
             return (
               <button
                 key={ws.id}
                 onClick={async () => {
-                  await activateWorkspace(ws.id);
+                  await openWorkspaceInNewWindow(ws.id);
                   setIsOpen(false);
                 }}
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-app text-ctp-text transition-colors hover:bg-ctp-surface0"
