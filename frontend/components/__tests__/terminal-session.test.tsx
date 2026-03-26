@@ -751,7 +751,7 @@ describe("TerminalSession", () => {
 
       // The hostElement should be appended to the container
       const container = screen.getByRole("region", { name: /terminal/i });
-      const innerContainer = container.querySelector(".min-h-0.flex-1.pt-3");
+      const innerContainer = container.querySelector(".h-full.pt-3");
       expect(innerContainer?.querySelector("div")?.contains(mockHost)).toBe(true);
     });
 

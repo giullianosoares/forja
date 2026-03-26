@@ -102,39 +102,23 @@ export const SessionStatusBar = memo(function SessionStatusBar({
     : null;
 
   return (
-    <div className="flex h-9 shrink-0 items-center gap-3 border-t border-ctp-surface0 px-3 font-mono text-app-xs text-ctp-overlay1">
+    <div className="flex h-9 shrink-0 items-center gap-3 border-t border-ctp-surface0 bg-ctp-mantle px-3 font-mono text-app-xs text-ctp-overlay1">
+      {/* Left side: session/PTY context */}
       {isAiCli && (
         <>
-          {/* CLI name */}
           <span className={CLI_REGISTRY[sessionType as keyof typeof CLI_REGISTRY]?.iconColor ?? "text-ctp-overlay1"}>
             {CLI_REGISTRY[sessionType as keyof typeof CLI_REGISTRY]?.displayName ?? sessionType}
           </span>
-
-          {/* Session state */}
           <Separator />
           <span className={SESSION_STATE_STYLES[sessionState] ?? "text-ctp-overlay1"}>
             {sessionState}
           </span>
-
-          {/* Session ID (truncated) */}
           {tab?.cliSessionId && (
             <>
               <Separator />
               <span>{tab.cliSessionId.slice(0, 8)}</span>
             </>
           )}
-
-          {/* Project + git branch */}
-          {branchDisplay && (
-            <>
-              <Separator />
-              <span>
-                {projectName} git:({branchDisplay})
-              </span>
-            </>
-          )}
-
-          {/* Elapsed time */}
           {elapsed && (
             <>
               <Separator />
@@ -146,23 +130,21 @@ export const SessionStatusBar = memo(function SessionStatusBar({
 
       {isTerminal && (
         <>
-          {/* user@hostname */}
           {hostInfo && (
             <span>{hostInfo.username}@{hostInfo.hostname}</span>
           )}
-
-          {/* Project path (shortened) */}
           {hostInfo ? <Separator /> : null}
           <span>{shortenPath(path, hostInfo?.username ?? null)}</span>
-
-          {/* Git branch */}
-          {branchDisplay && (
-            <>
-              <Separator />
-              <span>git:({branchDisplay})</span>
-            </>
-          )}
         </>
+      )}
+
+      {/* Right side: git info */}
+      {branchDisplay && (
+        <div className="ml-auto flex items-center gap-3">
+          <span>
+            {projectName} git:({branchDisplay})
+          </span>
+        </div>
       )}
     </div>
   );
