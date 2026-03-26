@@ -18,6 +18,7 @@ export async function saveCurrentProjectToDisk(projectPath: string): Promise<voi
     { useRightPanelStore },
     { useFilePreviewStore },
     { usePluginsStore },
+    { resolveMissingSessionIds },
   ] = await Promise.all([
     import("./terminal-tabs"),
     import("./tiling-layout"),
@@ -25,7 +26,11 @@ export async function saveCurrentProjectToDisk(projectPath: string): Promise<voi
     import("./right-panel"),
     import("./file-preview"),
     import("./plugins"),
+    import("@/hooks/use-pty"),
   ]);
+
+  // Safety net: resolve any missing session IDs before saving
+  await resolveMissingSessionIds(projectPath);
 
   const tabsStore = useTerminalTabsStore.getState();
   const tilingStore = useTilingLayoutStore.getState();
