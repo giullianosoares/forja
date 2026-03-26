@@ -842,6 +842,66 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle(
+  "copy_file_or_dir",
+  async (
+    _event,
+    args: { projectPath: string; sourcePath: string; targetDir: string }
+  ) => {
+    const fileOps = await getFileOperations();
+    const destPath = await fileOps.copyFileOrDir(args.projectPath, args.sourcePath, args.targetDir);
+    return { success: true, destPath };
+  }
+);
+
+ipcMain.handle(
+  "move_file_or_dir",
+  async (
+    _event,
+    args: { projectPath: string; sourcePath: string; targetDir: string }
+  ) => {
+    const fileOps = await getFileOperations();
+    const destPath = await fileOps.moveFileOrDir(args.projectPath, args.sourcePath, args.targetDir);
+    return { success: true, destPath };
+  }
+);
+
+ipcMain.handle(
+  "create_file",
+  async (
+    _event,
+    args: { projectPath: string; filePath: string }
+  ) => {
+    const fileOps = await getFileOperations();
+    await fileOps.createFile(args.projectPath, args.filePath);
+    return { success: true };
+  }
+);
+
+ipcMain.handle(
+  "create_directory",
+  async (
+    _event,
+    args: { projectPath: string; dirPath: string }
+  ) => {
+    const fileOps = await getFileOperations();
+    await fileOps.createDirectory(args.projectPath, args.dirPath);
+    return { success: true };
+  }
+);
+
+ipcMain.handle(
+  "paste_clipboard_image",
+  async (_event, args: { targetDir: string; filename?: string }) => {
+    const { saveClipboardImage } = await import("./clipboard.js");
+    return saveClipboardImage(args.targetDir, args.filename);
+  }
+);
+
+ipcMain.handle("reveal_in_finder", async (_event, args: { path: string }) => {
+  shell.showItemInFolder(args.path);
+});
+
 // Window controls
 ipcMain.handle("window:minimize", (event) => {
   BrowserWindow.fromWebContents(event.sender)?.minimize();
