@@ -36,11 +36,28 @@ async function persistSessionIdToDisk(projectPath: string): Promise<void> {
 }
 
 /**
+ * Collects session IDs already assigned to tabs of the same CLI type
+ * within a project. Used to avoid assigning a session ID that already
+ * belongs to another tab (which would cause unwanted --resume).
+ */
+function getUsedSessionIds(projectPath: string, sessionType: string): Set<string> {
+  const tabs = useTerminalTabsStore.getState().tabs;
+  const used = new Set<string>();
+  for (const t of tabs) {
+    if (t.path === projectPath && t.sessionType === sessionType && t.cliSessionId) {
+      used.add(t.cliSessionId);
+    }
+  }
+  return used;
+}
+
+/**
  * Resolves missing session IDs for tabs that use filesystem-based detection.
  * Called as a safety net before saving project state to disk.
  *
- * For each tab with sessionDirType and no cliSessionId, fetches the most
- * recent session from the filesystem and assigns it.
+ * For each tab with sessionDirType and no cliSessionId, fetches recent
+ * sessions from the filesystem and assigns the first one not already in use
+ * by another tab.
  */
 export async function resolveMissingSessionIds(projectPath: string): Promise<void> {
   const store = useTerminalTabsStore.getState();
@@ -55,11 +72,15 @@ export async function resolveMissingSessionIds(projectPath: string): Promise<voi
 
     try {
       const sessions = await invoke<CliSessionEntry[]>("get_cli_sessions", {
+        cliId: tab.sessionType,
         projectPath,
-        limit: 1,
+        limit: 10,
       });
-      if (sessions.length > 0) {
-        store.setCliSessionId(tab.id, sessions[0].sessionId);
+      // Pick the first session not already claimed by another tab
+      const used = getUsedSessionIds(projectPath, tab.sessionType);
+      const available = sessions.find((s) => !used.has(s.sessionId));
+      if (available) {
+        store.setCliSessionId(tab.id, available.sessionId);
       }
     } catch {
       // Non-fatal: session detection is best-effort
@@ -126,16 +147,23 @@ export function usePty(options: UsePtyOptions) {
 
       try {
         const sessions = await invoke<CliSessionEntry[]>("get_cli_sessions", {
+          cliId: tab.sessionType,
           projectPath: tab.path,
-          limit: 1,
+          limit: 10,
         });
         if (sessions.length > 0) {
           const store = useTerminalTabsStore.getState();
           // Re-check: another poll or PTY detection may have set it
           const freshTab = store.tabs.find((t) => t.id === tabId);
           if (freshTab && !freshTab.cliSessionId) {
-            store.setCliSessionId(tabId, sessions[0].sessionId);
-            persistSessionIdToDisk(tab.path);
+            // Skip sessions already assigned to other tabs to avoid
+            // resuming a different tab's session
+            const used = getUsedSessionIds(tab.path, tab.sessionType);
+            const available = sessions.find((s) => !used.has(s.sessionId));
+            if (available) {
+              store.setCliSessionId(tabId, available.sessionId);
+              persistSessionIdToDisk(tab.path);
+            }
           }
         }
       } catch {

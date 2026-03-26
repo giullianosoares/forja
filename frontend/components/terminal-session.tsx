@@ -284,10 +284,12 @@ export const TerminalSession = memo(function TerminalSession({ tabId, path, isVi
             if (cliSessionId && sessionType && sessionType !== "terminal") {
               const def = CLI_REGISTRY[sessionType];
               if (def?.resumeFlag) {
+                const resumeValue =
+                  def.resumeIdType === "latest" ? "latest" : cliSessionId;
                 if (def.resumeFlag.endsWith("=")) {
-                  resumeArgs = [`${def.resumeFlag}${cliSessionId}`];
+                  resumeArgs = [`${def.resumeFlag}${resumeValue}`];
                 } else {
-                  resumeArgs = [def.resumeFlag, cliSessionId];
+                  resumeArgs = [def.resumeFlag, resumeValue];
                 }
               }
             }
