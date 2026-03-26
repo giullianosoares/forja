@@ -10,6 +10,8 @@ import { useTerminalTabsStore } from "@/stores/terminal-tabs";
 import { useTerminalZoomStore } from "@/stores/terminal-zoom";
 import { useUserSettingsStore } from "@/stores/user-settings";
 import { useFocusModeStore } from "@/stores/focus-mode";
+import { useWorkspaceStore } from "@/stores/workspace";
+import { useModifierHeldStore } from "@/stores/modifier-held";
 import { paneFocusRegistry } from "@/lib/pane-focus-registry";
 import type { TerminalTab } from "@/stores/terminal-tabs";
 
@@ -223,6 +225,24 @@ export function useKeyboardShortcuts({
         if (index < projects.length) {
           swp(projects[index].path);
         }
+        useModifierHeldStore.getState().cancelBadges();
+        return;
+      }
+      // ⌘+Alt+1-9 — switch workspace (use event.code for reliable digit detection)
+      if (mod && event.altKey && !event.shiftKey && digitMatch) {
+        const digit = parseInt(digitMatch[1], 10);
+        if (digit === 0) return; // 0 is bound to resetZoom
+        event.preventDefault();
+        const { workspaces, openWorkspaceInNewWindow } = useWorkspaceStore.getState();
+        const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
+        const wsIndex = digit - 1;
+        if (wsIndex < workspaces.length) {
+          const ws = workspaces[wsIndex];
+          if (ws.id !== activeWorkspaceId) {
+            openWorkspaceInNewWindow(ws.id);
+          }
+        }
+        useModifierHeldStore.getState().cancelBadges();
         return;
       }
       // Alt+N — jump to next project with pending notification
