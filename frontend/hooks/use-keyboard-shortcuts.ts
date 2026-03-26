@@ -43,28 +43,33 @@ export function useKeyboardShortcuts({
         const settingsState = useUserSettingsStore.getState();
         if (settingsState.editorOpen && settingsState.editorDirty) {
           event.preventDefault();
+          useModifierHeldStore.getState().cancelBadges();
           settingsState.saveEditorContent();
           return;
         }
       }
       if (mod && event.key === ",") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         useAppDialogsStore.getState().setSettingsOpen(true);
         return;
       }
       if (mod && event.shiftKey && event.key.toLowerCase() === "o") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         useFileTreeStore.getState().openProject();
         return;
       }
       if (mod && event.shiftKey && event.key.toLowerCase() === "t") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         if (!useFileTreeStore.getState().currentPath) return;
         useCommandPaletteStore.getState().open("sessions");
         return;
       }
       if (mod && event.key.toLowerCase() === "w") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         // Check if closing file-preview with unsaved changes
         const previewStore = useFilePreviewStore.getState();
         const model = tilingStore.model;
@@ -91,28 +96,33 @@ export function useKeyboardShortcuts({
       }
       if (mod && event.altKey && event.key.toLowerCase() === "v") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         createSplit("vertical");
         return;
       }
       if (mod && event.altKey && event.key.toLowerCase() === "h") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         createSplit("horizontal");
         return;
       }
       // Ctrl+Alt+[/] focus switching removed — flexlayout handles focus natively
       if (mod && event.shiftKey && event.key.toLowerCase() === "p") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         useCommandPaletteStore.getState().open("commands");
         return;
       }
       // Ctrl/Cmd+Shift+L — go to project (project switcher)
       if (mod && event.shiftKey && event.key.toLowerCase() === "l") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         useCommandPaletteStore.getState().open("projects");
         return;
       }
       if (mod && event.shiftKey && event.key.toLowerCase() === "g") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         const projectPath = useFileTreeStore.getState().currentPath;
         if (!projectPath) return;
         const diffState = useGitDiffStore.getState();
@@ -128,6 +138,7 @@ export function useKeyboardShortcuts({
       }
       if (mod && event.altKey && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         const projectPath = useFileTreeStore.getState().currentPath;
         if (!projectPath) return;
         const diffState = useGitDiffStore.getState();
@@ -146,6 +157,7 @@ export function useKeyboardShortcuts({
       }
       if (mod && !event.shiftKey && event.key === "p") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         const { tree: t, currentPath: cp } = useFileTreeStore.getState();
         if (t && cp) {
           useCommandPaletteStore.getState().open("files");
@@ -155,6 +167,7 @@ export function useKeyboardShortcuts({
       // Ctrl/Cmd+Shift+F — toggle terminal fullscreen
       if (mod && event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         useTerminalTabsStore.getState().toggleTerminalFullscreen();
         return;
       }
@@ -163,6 +176,7 @@ export function useKeyboardShortcuts({
         const previewStore = useFilePreviewStore.getState();
         if (previewStore.currentFile) {
           event.preventDefault();
+          useModifierHeldStore.getState().cancelBadges();
           previewStore.toggleEditing();
           return;
         }
@@ -170,6 +184,7 @@ export function useKeyboardShortcuts({
       }
       if (mod && event.shiftKey && event.key.toLowerCase() === "e") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         if (!useFileTreeStore.getState().currentPath) return;
         if (tilingStore.hasBlock("tab-file-tree")) {
           tilingStore.selectTab("tab-file-tree");
@@ -186,6 +201,7 @@ export function useKeyboardShortcuts({
       }
       if (mod && event.shiftKey && event.key.toLowerCase() === "b") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         const blockId = `browser-${Date.now().toString(36)}`;
         tilingStore.addBlock(
           { type: "browser", url: "https://github.com/nandomoreirame/forja" },
@@ -197,21 +213,25 @@ export function useKeyboardShortcuts({
       // Ctrl/Cmd+Alt+F — toggle focus mode
       if (mod && event.altKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         useFocusModeStore.getState().toggleFocusMode();
         return;
       }
       if (mod && event.altKey && (event.key === "=" || event.key === "+")) {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         useTerminalZoomStore.getState().zoomIn();
         return;
       }
       if (mod && event.altKey && event.key === "-") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         useTerminalZoomStore.getState().zoomOut();
         return;
       }
       if (mod && event.altKey && event.key === "0") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         useTerminalZoomStore.getState().resetZoom();
         return;
       }
@@ -248,6 +268,7 @@ export function useKeyboardShortcuts({
       // Alt+N — jump to next project with pending notification
       if (event.altKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === "n") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         const { projects, activeProjectPath, notifiedProjects, switchToProject } =
           useProjectsStore.getState();
         const unread = projects.filter((p) => notifiedProjects.has(p.path));
@@ -266,6 +287,7 @@ export function useKeyboardShortcuts({
       // Ctrl+Tab / Ctrl+Shift+Tab: cycle ALL tabs across ALL panes (like Chrome)
       if (event.ctrlKey && event.key === "Tab") {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         const direction = event.shiftKey ? "backward" : "forward";
         const nextTabId = tilingStore.cycleGlobalTab(direction);
         if (nextTabId) {
@@ -286,6 +308,7 @@ export function useKeyboardShortcuts({
           event.key === "ArrowUp")
       ) {
         event.preventDefault();
+        useModifierHeldStore.getState().cancelBadges();
         const dirMap: Record<string, "right" | "left" | "down" | "up"> = {
           ArrowRight: "right",
           ArrowLeft: "left",
