@@ -480,4 +480,125 @@ describe("SessionStatusBar", () => {
       expect(screen.getByText("Gemini CLI")).toBeInTheDocument();
     });
   });
+
+  describe("model name", () => {
+    it("renders model name when available for AI session", async () => {
+      mockTabs.push({
+        id: "tab-model",
+        sessionType: "claude",
+        isRunning: true,
+        createdAt: Date.now(),
+        cliSessionId: "abc123",
+      });
+
+      mockInvoke.mockImplementation((channel: string) => {
+        if (channel === "get_git_info_command") {
+          return Promise.resolve({ branch: "main", modified_count: 0 });
+        }
+        if (channel === "get_session_host_info") {
+          return Promise.resolve({ hostname: "arch", username: "nando" });
+        }
+        if (channel === "get_session_model") {
+          return Promise.resolve("claude-opus-4-6");
+        }
+        return Promise.resolve(undefined);
+      });
+
+      render(
+        <SessionStatusBar tabId="tab-model" path="/home/user/project" sessionType="claude" />
+      );
+
+      await flushPromises();
+
+      // Should display formatted model name
+      expect(screen.getByText("Opus 4.6")).toBeInTheDocument();
+    });
+
+    it("does not render model name for terminal sessions", async () => {
+      mockTabs.push({
+        id: "tab-term-model",
+        sessionType: "terminal",
+        isRunning: true,
+        createdAt: Date.now(),
+      });
+
+      mockInvoke.mockImplementation((channel: string) => {
+        if (channel === "get_git_info_command") {
+          return Promise.resolve({ branch: "main", modified_count: 0 });
+        }
+        if (channel === "get_session_host_info") {
+          return Promise.resolve({ hostname: "arch", username: "nando" });
+        }
+        if (channel === "get_session_model") {
+          return Promise.resolve("claude-opus-4-6");
+        }
+        return Promise.resolve(undefined);
+      });
+
+      render(
+        <SessionStatusBar tabId="tab-term-model" path="/home/user/project" sessionType="terminal" />
+      );
+
+      await flushPromises();
+
+      expect(screen.queryByText("Opus 4.6")).not.toBeInTheDocument();
+    });
+
+    it("handles model fetch failure gracefully", async () => {
+      mockTabs.push({
+        id: "tab-model-fail",
+        sessionType: "claude",
+        isRunning: true,
+        createdAt: Date.now(),
+        cliSessionId: "abc123",
+      });
+
+      mockInvoke.mockImplementation((channel: string) => {
+        if (channel === "get_git_info_command") {
+          return Promise.resolve({ branch: "main", modified_count: 0 });
+        }
+        if (channel === "get_session_model") {
+          return Promise.reject(new Error("not found"));
+        }
+        return Promise.resolve(undefined);
+      });
+
+      render(
+        <SessionStatusBar tabId="tab-model-fail" path="/home/user/project" sessionType="claude" />
+      );
+
+      await flushPromises();
+
+      // Should still render CLI name without crashing
+      expect(screen.getByText("Claude Code")).toBeInTheDocument();
+    });
+
+    it("formats known model IDs to friendly names", async () => {
+      mockTabs.push({
+        id: "tab-model-fmt",
+        sessionType: "claude",
+        isRunning: true,
+        createdAt: Date.now(),
+        cliSessionId: "xyz789",
+      });
+
+      mockInvoke.mockImplementation((channel: string) => {
+        if (channel === "get_git_info_command") {
+          return Promise.resolve({ branch: "main", modified_count: 0 });
+        }
+        if (channel === "get_session_model") {
+          return Promise.resolve("claude-sonnet-4-6");
+        }
+        return Promise.resolve(undefined);
+      });
+
+      render(
+        <SessionStatusBar tabId="tab-model-fmt" path="/home/user/project" sessionType="claude" />
+      );
+
+      await flushPromises();
+
+      expect(screen.getByText("Sonnet 4.6")).toBeInTheDocument();
+    });
+  });
 });

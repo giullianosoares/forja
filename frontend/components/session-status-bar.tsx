@@ -43,6 +43,20 @@ function Separator() {
   return <span className="text-ctp-surface1">|</span>;
 }
 
+/**
+ * Converts a raw model ID (e.g. "claude-opus-4-6") into a friendly display
+ * name (e.g. "Opus 4.6"). Falls back to the raw ID for unknown formats.
+ */
+function formatModelName(modelId: string): string {
+  // Pattern: claude-<family>-<major>-<minor>
+  const match = modelId.match(/^claude-(\w+)-(\d+)-(\d+)/);
+  if (match) {
+    const family = match[1].charAt(0).toUpperCase() + match[1].slice(1);
+    return `${family} ${match[2]}.${match[3]}`;
+  }
+  return modelId;
+}
+
 const SESSION_STATE_STYLES: Record<string, string> = {
   idle: "text-ctp-overlay1",
   thinking: "text-ctp-yellow",
@@ -58,6 +72,7 @@ export const SessionStatusBar = memo(function SessionStatusBar({
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null);
   const [hostInfo, setHostInfo] = useState<HostInfo | null>(null);
   const [elapsed, setElapsed] = useState<string | null>(null);
+  const [modelName, setModelName] = useState<string | null>(null);
 
   const sessionState = useSessionStateStore((s) => s.getState(tabId));
   const tab = useTerminalTabsStore((s) => s.tabs.find((t: { id: string }) => t.id === tabId));
@@ -96,19 +111,40 @@ export const SessionStatusBar = memo(function SessionStatusBar({
     return () => clearInterval(interval);
   }, [isAiCli, tab?.createdAt]);
 
+  // Fetch model name (only for AI sessions with a detected session ID)
+  useEffect(() => {
+    if (!isAiCli || !tab?.cliSessionId) return;
+    let cancelled = false;
+    invoke<string | null>("get_session_model", {
+      cliId: sessionType,
+      projectPath: path,
+      sessionId: tab.cliSessionId,
+    }).then((model) => {
+      if (!cancelled && model) setModelName(formatModelName(model));
+    }).catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [isAiCli, sessionType, path, tab?.cliSessionId]);
+
   const projectName = path.split("/").pop() ?? path;
   const branchDisplay = gitInfo
     ? `${gitInfo.branch}${gitInfo.modified_count > 0 ? "*" : ""}`
     : null;
 
   return (
-    <div className="flex h-9 shrink-0 items-center gap-3 border-t border-ctp-surface0 bg-ctp-mantle px-3 font-mono text-app-xs text-ctp-overlay1">
+    <div className="flex h-9 shrink-0 items-center gap-3 border-t border-ctp-surface0 bg-ctp-mantle px-3 font-sans text-app-xs text-ctp-overlay1">
       {/* Left side: session/PTY context */}
       {isAiCli && (
         <>
           <span className={CLI_REGISTRY[sessionType as keyof typeof CLI_REGISTRY]?.iconColor ?? "text-ctp-overlay1"}>
             {CLI_REGISTRY[sessionType as keyof typeof CLI_REGISTRY]?.displayName ?? sessionType}
           </span>
+          {modelName && (
+            <>
+              <Separator />
+              <span className="text-ctp-subtext0">{modelName}</span>
+            </>
+          )}
           <Separator />
           <span className={SESSION_STATE_STYLES[sessionState] ?? "text-ctp-overlay1"}>
             {sessionState}
