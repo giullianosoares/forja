@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Check, FolderOpen, Layers, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -48,9 +48,15 @@ export function WorkspaceSwitcher() {
     loadWorkspaces();
   }, [loadWorkspaces]);
 
+  // Auto-open popover when Cmd+Alt held, auto-close when released
+  const openedByModifierRef = useRef(false);
   useEffect(() => {
     if (showWorkspaceBadges && hasWorkspaces) {
+      openedByModifierRef.current = true;
       setIsOpen(true);
+    } else if (!showWorkspaceBadges && openedByModifierRef.current) {
+      openedByModifierRef.current = false;
+      setIsOpen(false);
     }
   }, [showWorkspaceBadges, hasWorkspaces]);
 

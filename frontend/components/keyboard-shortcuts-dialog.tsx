@@ -28,6 +28,7 @@ const shortcuts: { section: string; items: Shortcut[] }[] = [
       { label: "Command Palette", keys: [mod, "Shift", "P"] },
       { label: "Go to Project", keys: [mod, "Shift", "L"] },
       { label: "Switch Project 1-9", keys: [mod, "Shift", "1-9"] },
+      { label: "Switch Workspace 1-9", keys: [mod, "Alt", "1-9"] },
       { label: "Add Project", keys: [mod, "Shift", "O"] },
       { label: "Open Files", keys: [mod, "Shift", "E"] },
       { label: "Open Browser", keys: [mod, "Shift", "B"] },
@@ -40,10 +41,12 @@ const shortcuts: { section: string; items: Shortcut[] }[] = [
   {
     section: "Tabs",
     items: [
+      { label: "Switch to Tab 1-9", keys: [mod, "1-9"] },
       { label: "New Tab", keys: [mod, "Shift", "T"] },
       { label: "Close Tab", keys: [mod, "Shift", "W"] },
       { label: "Next Tab", keys: ["Ctrl", "Tab"] },
       { label: "Previous Tab", keys: ["Ctrl", "Shift", "Tab"] },
+      { label: "Navigate Pane", keys: [mod, "Shift", "←→↑↓"] },
     ],
   },
   {
